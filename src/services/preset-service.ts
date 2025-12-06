@@ -257,3 +257,21 @@ export async function getPendingPresets(db: D1Database): Promise<CommunityPreset
   const result = await db.prepare(query).all<PresetRow>();
   return (result.results || []).map(rowToPreset);
 }
+
+/**
+ * Get all presets submitted by a specific user
+ * Returns presets in all statuses (pending, approved, rejected)
+ * Sorted by creation date (newest first)
+ */
+export async function getPresetsByUser(
+  db: D1Database,
+  authorDiscordId: string
+): Promise<CommunityPreset[]> {
+  const query = `
+    SELECT * FROM presets
+    WHERE author_discord_id = ?
+    ORDER BY created_at DESC
+  `;
+  const result = await db.prepare(query).bind(authorDiscordId).all<PresetRow>();
+  return (result.results || []).map(rowToPreset);
+}

@@ -22,6 +22,13 @@ export interface Env {
   MODERATION_WEBHOOK_URL?: string;
   OWNER_DISCORD_ID?: string;
   DISCORD_BOT_TOKEN?: string;
+
+  // Web OAuth (shared with xivdyetools-oauth-worker)
+  JWT_SECRET?: string;
+
+  // Discord bot webhook for notifications
+  DISCORD_BOT_WEBHOOK_URL?: string;
+  INTERNAL_WEBHOOK_SECRET?: string;
 }
 
 // ============================================
@@ -182,11 +189,14 @@ export interface VoteRow {
 // UTILITY TYPES
 // ============================================
 
+export type AuthSource = 'none' | 'bot' | 'web';
+
 export interface AuthContext {
   isAuthenticated: boolean;
   isModerator: boolean;
   userDiscordId?: string;
   userName?: string;
+  authSource: AuthSource;
 }
 
 export interface RateLimitResult {

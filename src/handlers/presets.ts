@@ -10,11 +10,13 @@ import {
   getPresets,
   getFeaturedPresets,
   getPresetById,
+  getPresetsByUser,
   findDuplicatePreset,
   createPreset,
 } from '../services/preset-service.js';
 import { moderateContent } from '../services/moderation-service.js';
 import { addVote } from './votes.js';
+import { checkSubmissionRateLimit, getRemainingSubmissions } from '../services/rate-limit-service.js';
 
 type Variables = {
   auth: AuthContext;
@@ -72,8 +74,55 @@ presetsRouter.get('/:id', async (c) => {
 });
 
 // ============================================
-// AUTHENTICATED ENDPOINTS (Bot Only)
+// AUTHENTICATED ENDPOINTS
 // ============================================
+
+/**
+ * GET /api/v1/presets/mine
+ * Get the current user's submitted presets (all statuses)
+ */
+presetsRouter.get('/mine', async (c) => {
+  // Require authentication
+  const authError = requireAuth(c);
+  if (authError) return authError;
+
+  // Require user context
+  const userError = requireUserContext(c);
+  if (userError) return userError;
+
+  const auth = c.get('auth');
+
+  const presets = await getPresetsByUser(c.env.DB, auth.userDiscordId!);
+
+  return c.json({
+    presets,
+    total: presets.length,
+  });
+});
+
+/**
+ * GET /api/v1/presets/rate-limit
+ * Get remaining submissions for the authenticated user today
+ */
+presetsRouter.get('/rate-limit', async (c) => {
+  // Require authentication
+  const authError = requireAuth(c);
+  if (authError) return authError;
+
+  // Require user context
+  const userError = requireUserContext(c);
+  if (userError) return userError;
+
+  const auth = c.get('auth');
+
+  const { remaining, resetAt } = await getRemainingSubmissions(c.env.DB, auth.userDiscordId!);
+
+  return c.json({
+    remaining,
+    limit: 10,
+    reset_at: resetAt.toISOString(),
+  });
+});
 
 /**
  * POST /api/v1/presets
@@ -89,6 +138,20 @@ presetsRouter.post('/', async (c) => {
   if (userError) return userError;
 
   const auth = c.get('auth');
+
+  // Check rate limit (10 submissions per day)
+  const rateLimitResult = await checkSubmissionRateLimit(c.env.DB, auth.userDiscordId!);
+  if (!rateLimitResult.allowed) {
+    return c.json(
+      {
+        error: 'Rate Limit Exceeded',
+        message: `You've reached your daily submission limit (10 per day). Try again tomorrow.`,
+        remaining: 0,
+        reset_at: rateLimitResult.resetAt.toISOString(),
+      },
+      429
+    );
+  }
 
   // Parse request body
   let body: PresetSubmission;
@@ -139,17 +202,32 @@ presetsRouter.post('/', async (c) => {
   // Auto-vote for own preset
   await addVote(c.env.DB, preset.id, auth.userDiscordId!);
 
-  // If flagged, notify moderators
-  if (!moderationResult.passed) {
-    // TODO: Send notification to moderation channel
-    console.log(`Preset ${preset.id} flagged for review: ${moderationResult.flaggedReason}`);
-  }
+  // Send notification to Discord bot (non-blocking)
+  // This is fire-and-forget - submission succeeds even if notification fails
+  notifyDiscordBot(c.env, {
+    type: 'submission',
+    preset: {
+      ...preset,
+      author_name: auth.userName || 'Unknown User',
+      author_discord_id: auth.userDiscordId!,
+      status,
+      moderation_status: moderationResult.passed ? 'clean' : 'flagged',
+      source: auth.authSource,
+    },
+  }).catch((err) => {
+    // Log but don't fail the request
+    console.error('Failed to notify Discord bot:', err);
+  });
+
+  // Get updated rate limit info
+  const { remaining } = await getRemainingSubmissions(c.env.DB, auth.userDiscordId!);
 
   return c.json(
     {
       success: true,
       preset,
       moderation_status: status,
+      remaining_submissions: remaining,
     },
     201
   );
@@ -198,4 +276,51 @@ function validateSubmission(body: PresetSubmission): string | null {
   }
 
   return null;
+}
+
+// ============================================
+// DISCORD BOT NOTIFICATION
+// ============================================
+
+interface PresetNotificationPayload {
+  type: 'submission';
+  preset: {
+    id: string;
+    name: string;
+    description: string;
+    category_id: string;
+    dyes: number[];
+    tags: string[];
+    author_name: string;
+    author_discord_id: string;
+    status: 'pending' | 'approved' | 'rejected';
+    moderation_status: 'clean' | 'flagged' | 'auto_approved';
+    source: 'bot' | 'web' | 'none';
+    created_at: string;
+  };
+}
+
+/**
+ * Notify the Discord bot about a new preset submission
+ * This is a fire-and-forget operation - errors are logged but don't fail the request
+ */
+async function notifyDiscordBot(env: Env, payload: PresetNotificationPayload): Promise<void> {
+  // Check if webhook is configured
+  if (!env.DISCORD_BOT_WEBHOOK_URL || !env.INTERNAL_WEBHOOK_SECRET) {
+    console.log('Discord bot webhook not configured, skipping notification');
+    return;
+  }
+
+  const response = await fetch(`${env.DISCORD_BOT_WEBHOOK_URL}/internal/notify-submission`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${env.INTERNAL_WEBHOOK_SECRET}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Discord bot webhook returned ${response.status}: ${await response.text()}`);
+  }
 }

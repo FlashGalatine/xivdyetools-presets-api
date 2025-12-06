@@ -36,11 +36,14 @@ database_id = "e17d68a1-5a44-4c88-b02b-07d053cbe321"
 # Rate limiting configuration (built into worker logic)
 # - Public endpoints: 100 req/min per IP
 # - Bot endpoints: 50 req/min per user
-# - Submit: 10 req/hour per user
+# - Submit: 10 submissions per day per user
 
 # Secrets (set via `wrangler secret put <NAME>`)
 # Required:
 #   BOT_API_SECRET - Shared secret for bot authentication
+#
+# Web OAuth (shared with xivdyetools-oauth-worker):
+#   JWT_SECRET - Shared JWT signing key (generate with: openssl rand -hex 32)
 #
 # Moderation:
 #   MODERATOR_IDS - Comma-separated Discord user IDs
@@ -50,3 +53,7 @@ database_id = "e17d68a1-5a44-4c88-b02b-07d053cbe321"
 #   MODERATION_WEBHOOK_URL - Discord webhook URL
 #   OWNER_DISCORD_ID - Bot owner Discord ID
 #   DISCORD_BOT_TOKEN - For DM notifications
+#
+# Discord Bot Integration (for web submission notifications):
+#   DISCORD_BOT_WEBHOOK_URL - Bot internal webhook URL (e.g., http://host:port)
+#   INTERNAL_WEBHOOK_SECRET - Shared secret for bot webhook auth
