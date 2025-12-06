@@ -1,0 +1,29 @@
+{
+  "name": "xivdyetools-worker",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker API for XIV Dye Tools Community Presets",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:production": "wrangler deploy --env production",
+    "db:migrate": "wrangler d1 execute xivdyetools-db --file=./schema.sql",
+    "db:migrate:local": "wrangler d1 execute xivdyetools-db --local --file=./schema.sql",
+    "db:seed": "npx tsx scripts/migrate-presets.ts",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.93.0",
+    "tsx": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
