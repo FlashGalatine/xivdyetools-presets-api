@@ -1,6 +1,6 @@
 {
   "name": "xivdyetools-worker",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Cloudflare Worker API for XIV Dye Tools Community Presets",
   "type": "module",
   "scripts": {
