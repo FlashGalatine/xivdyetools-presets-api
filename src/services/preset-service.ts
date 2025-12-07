@@ -10,6 +10,8 @@ import type {
   PresetFilters,
   PresetListResponse,
   PresetSubmission,
+  PresetPreviousValues,
+  PresetEditRequest,
 } from '../types.js';
 
 /**
@@ -40,6 +42,7 @@ export function rowToPreset(row: PresetRow): CommunityPreset {
     created_at: row.created_at,
     updated_at: row.updated_at,
     dye_signature: row.dye_signature || undefined,
+    previous_values: row.previous_values ? JSON.parse(row.previous_values) : null,
   };
 }
 
@@ -274,4 +277,127 @@ export async function getPresetsByUser(
   `;
   const result = await db.prepare(query).bind(authorDiscordId).all<PresetRow>();
   return (result.results || []).map(rowToPreset);
+}
+
+/**
+ * Check for duplicate preset by dye signature, excluding a specific preset ID
+ * Used when editing to allow keeping the same dye combination
+ */
+export async function findDuplicatePresetExcluding(
+  db: D1Database,
+  dyes: number[],
+  excludePresetId: string
+): Promise<CommunityPreset | null> {
+  const signature = generateDyeSignature(dyes);
+  const query = `
+    SELECT * FROM presets
+    WHERE dye_signature = ? AND status IN ('approved', 'pending') AND id != ?
+    LIMIT 1
+  `;
+  const row = await db.prepare(query).bind(signature, excludePresetId).first<PresetRow>();
+  return row ? rowToPreset(row) : null;
+}
+
+/**
+ * Update a preset with new values
+ * Optionally stores previous values for moderation revert
+ */
+export async function updatePreset(
+  db: D1Database,
+  id: string,
+  updates: PresetEditRequest,
+  previousValues?: PresetPreviousValues,
+  newStatus?: 'approved' | 'pending'
+): Promise<CommunityPreset | null> {
+  const now = new Date().toISOString();
+
+  // Build dynamic UPDATE query based on provided fields
+  const setClauses: string[] = ['updated_at = ?'];
+  const params: (string | number | null)[] = [now];
+
+  if (updates.name !== undefined) {
+    setClauses.push('name = ?');
+    params.push(updates.name);
+  }
+
+  if (updates.description !== undefined) {
+    setClauses.push('description = ?');
+    params.push(updates.description);
+  }
+
+  if (updates.dyes !== undefined) {
+    setClauses.push('dyes = ?');
+    params.push(JSON.stringify(updates.dyes));
+    // Regenerate dye signature
+    setClauses.push('dye_signature = ?');
+    params.push(generateDyeSignature(updates.dyes));
+  }
+
+  if (updates.tags !== undefined) {
+    setClauses.push('tags = ?');
+    params.push(JSON.stringify(updates.tags));
+  }
+
+  if (previousValues !== undefined) {
+    setClauses.push('previous_values = ?');
+    params.push(previousValues ? JSON.stringify(previousValues) : null);
+  }
+
+  if (newStatus !== undefined) {
+    setClauses.push('status = ?');
+    params.push(newStatus);
+  }
+
+  // Add WHERE clause
+  params.push(id);
+
+  const query = `
+    UPDATE presets
+    SET ${setClauses.join(', ')}
+    WHERE id = ?
+  `;
+
+  await db.prepare(query).bind(...params).run();
+  return getPresetById(db, id);
+}
+
+/**
+ * Revert a preset to its previous values
+ * Restores from previous_values and clears that column
+ */
+export async function revertPreset(
+  db: D1Database,
+  id: string
+): Promise<CommunityPreset | null> {
+  // First get the current preset to retrieve previous_values
+  const current = await getPresetById(db, id);
+  if (!current || !current.previous_values) {
+    return null;
+  }
+
+  const previous = current.previous_values;
+  const now = new Date().toISOString();
+  const dyeSignature = generateDyeSignature(previous.dyes);
+
+  const query = `
+    UPDATE presets
+    SET name = ?, description = ?, dyes = ?, tags = ?, dye_signature = ?,
+        status = 'approved', previous_values = NULL, updated_at = ?
+    WHERE id = ?
+  `;
+
+  await db
+    .prepare(query)
+    .bind(
+      previous.name,
+      previous.description,
+      JSON.stringify(previous.dyes),
+      JSON.stringify(previous.tags),
+      dyeSignature,
+      now,
+      id
+    )
+    .run();
+
+  return getPresetById(db, id);
 }

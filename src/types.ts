@@ -73,6 +73,17 @@ export interface CommunityPreset {
   created_at: string;
   updated_at: string;
   dye_signature?: string;
+  previous_values?: PresetPreviousValues | null;
+}
+
+/**
+ * Stores pre-edit values for moderation revert capability
+ */
+export interface PresetPreviousValues {
+  name: string;
+  description: string;
+  tags: string[];
+  dyes: number[];
 }
 
 export interface PresetSubmission {
@@ -81,6 +92,31 @@ export interface PresetSubmission {
   category_id: PresetCategory;
   dyes: number[];
   tags: string[];
+}
+
+/**
+ * Request body for editing a preset
+ */
+export interface PresetEditRequest {
+  name?: string;          // 2-50 characters
+  description?: string;   // 10-200 characters
+  dyes?: number[];        // 2-5 dye IDs
+  tags?: string[];        // 0-10 tags, max 30 chars each
+}
+
+/**
+ * Response from preset edit endpoint
+ */
+export interface PresetEditResponse {
+  success: boolean;
+  preset?: CommunityPreset;
+  moderation_status?: 'approved' | 'pending';
+  duplicate?: {
+    id: string;
+    name: string;
+    author_name: string | null;
+  };
+  error?: string;
 }
 
 // ============================================
@@ -147,7 +183,7 @@ export interface ModerationLogEntry {
   id: string;
   preset_id: string;
   moderator_discord_id: string;
-  action: 'approve' | 'reject' | 'flag' | 'unflag';
+  action: 'approve' | 'reject' | 'flag' | 'unflag' | 'revert';
   reason: string | null;
   created_at: string;
 }
@@ -171,6 +207,7 @@ export interface PresetRow {
   created_at: string;
   updated_at: string;
   dye_signature: string | null;
+  previous_values: string | null; // JSON string of PresetPreviousValues
 }
 
 export interface CategoryRow {

@@ -59,6 +59,11 @@ CREATE INDEX IF NOT EXISTS idx_presets_curated ON presets(is_curated);
 ALTER TABLE presets ADD COLUMN dye_signature TEXT;
 CREATE INDEX IF NOT EXISTS idx_presets_dye_signature ON presets(dye_signature);
 
+-- Store pre-edit values for moderation revert capability
+-- JSON: {"name": "...", "description": "...", "tags": [...], "dyes": [...]}
+-- Only populated when an edit is flagged by content moderation
+ALTER TABLE presets ADD COLUMN previous_values TEXT;
+
 -- ============================================
 -- VOTES TABLE
 -- One vote per user per preset (composite PK)
@@ -82,7 +87,7 @@ CREATE TABLE IF NOT EXISTS moderation_log (
   id TEXT PRIMARY KEY,                    -- UUID v4
   preset_id TEXT NOT NULL,
   moderator_discord_id TEXT NOT NULL,
-  action TEXT NOT NULL,                   -- approve | reject | flag | unflag
+  action TEXT NOT NULL,                   -- approve | reject | flag | unflag | revert
   reason TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (preset_id) REFERENCES presets(id) ON DELETE CASCADE
