@@ -141,8 +141,44 @@ presetsRouter.patch('/refresh-author', async (c) => {
 });
 
 // ============================================
-// DYNAMIC ID ROUTE (must be after specific routes)
+// DYNAMIC ID ROUTES (must be after specific routes)
 // ============================================
+
+/**
+ * DELETE /api/v1/presets/:id
+ * Delete a preset (owner or moderator only)
+ */
+presetsRouter.delete('/:id', async (c) => {
+  // Require authentication
+  const authError = requireAuth(c);
+  if (authError) return authError;
+
+  // Require user context
+  const userError = requireUserContext(c);
+  if (userError) return userError;
+
+  const auth = c.get('auth');
+  const id = c.req.param('id');
+
+  // Get preset to check ownership
+  const preset = await getPresetById(c.env.DB, id);
+  if (!preset) {
+    return c.json({ error: 'Not Found', message: 'Preset not found' }, 404);
+  }
+
+  // Only owner or moderator can delete
+  if (preset.author_discord_id !== auth.userDiscordId && !auth.isModerator) {
+    return c.json({ error: 'Forbidden', message: "Cannot delete another user's preset" }, 403);
+  }
+
+  // Delete votes and preset in transaction
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM votes WHERE preset_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM presets WHERE id = ?').bind(id),
+  ]);
+
+  return c.json({ success: true, message: 'Preset deleted' });
+});
 
 /**
  * GET /api/v1/presets/:id
@@ -346,7 +382,7 @@ async function notifyDiscordBot(env: Env, payload: PresetNotificationPayload): P
     return;
   }
 
-  const response = await fetch(`${env.DISCORD_BOT_WEBHOOK_URL}/internal/notify-submission`, {
+  const response = await fetch(`${env.DISCORD_BOT_WEBHOOK_URL}/webhooks/preset-submission`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
