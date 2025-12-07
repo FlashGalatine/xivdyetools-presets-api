@@ -273,22 +273,24 @@ presetsRouter.post('/', async (c) => {
   // Auto-vote for own preset
   await addVote(c.env.DB, preset.id, auth.userDiscordId!);
 
-  // Send notification to Discord bot (non-blocking)
-  // This is fire-and-forget - submission succeeds even if notification fails
-  notifyDiscordBot(c.env, {
-    type: 'submission',
-    preset: {
-      ...preset,
-      author_name: auth.userName || 'Unknown User',
-      author_discord_id: auth.userDiscordId!,
-      status,
-      moderation_status: moderationResult.passed ? 'clean' : 'flagged',
-      source: auth.authSource,
-    },
-  }).catch((err) => {
-    // Log but don't fail the request
-    console.error('Failed to notify Discord bot:', err);
-  });
+  // Send notification to Discord worker (non-blocking)
+  // Use waitUntil to keep the worker alive while notification completes
+  c.executionCtx.waitUntil(
+    notifyDiscordBot(c.env, {
+      type: 'submission',
+      preset: {
+        ...preset,
+        author_name: auth.userName || 'Unknown User',
+        author_discord_id: auth.userDiscordId!,
+        status,
+        moderation_status: moderationResult.passed ? 'clean' : 'flagged',
+        source: auth.authSource,
+      },
+    }).catch((err) => {
+      // Log but don't fail the request
+      console.error('Failed to notify Discord worker:', err);
+    })
+  );
 
   // Get updated rate limit info
   const { remaining } = await getRemainingSubmissions(c.env.DB, auth.userDiscordId!);
@@ -372,26 +374,31 @@ interface PresetNotificationPayload {
 }
 
 /**
- * Notify the Discord bot about a new preset submission
+ * Notify the Discord worker about a new preset submission
+ * Uses Cloudflare Service Binding for Worker-to-Worker communication (avoids error 1042)
  * This is a fire-and-forget operation - errors are logged but don't fail the request
  */
 async function notifyDiscordBot(env: Env, payload: PresetNotificationPayload): Promise<void> {
-  // Check if webhook is configured
-  if (!env.DISCORD_BOT_WEBHOOK_URL || !env.INTERNAL_WEBHOOK_SECRET) {
-    console.log('Discord bot webhook not configured, skipping notification');
+  // Check if service binding is configured
+  if (!env.DISCORD_WORKER || !env.INTERNAL_WEBHOOK_SECRET) {
+    console.log('Discord worker binding not configured, skipping notification');
     return;
   }
 
-  const response = await fetch(`${env.DISCORD_BOT_WEBHOOK_URL}/webhooks/preset-submission`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${env.INTERNAL_WEBHOOK_SECRET}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  // Use service binding for direct Worker-to-Worker communication
+  // The hostname is ignored - only the path matters
+  const response = await env.DISCORD_WORKER.fetch(
+    new Request('https://internal/webhooks/preset-submission', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.INTERNAL_WEBHOOK_SECRET}`,
+      },
+      body: JSON.stringify(payload),
+    })
+  );
 
   if (!response.ok) {
-    throw new Error(`Discord bot webhook returned ${response.status}: ${await response.text()}`);
+    throw new Error(`Discord worker returned ${response.status}: ${await response.text()}`);
   }
 }

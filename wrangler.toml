@@ -17,6 +17,12 @@ binding = "DB"
 database_name = "xivdyetools-presets"
 database_id = "e17d68a1-5a44-4c88-b02b-07d053cbe321"
 
+# Service binding to Discord Worker for notifications
+# Enables direct Worker-to-Worker communication (avoids error 1042)
+[[services]]
+binding = "DISCORD_WORKER"
+service = "xivdyetools-discord-worker"
+
 # Environment variables (non-secret)
 [vars]
 ENVIRONMENT = "development"
@@ -32,6 +38,10 @@ vars = { ENVIRONMENT = "production", API_VERSION = "v1", CORS_ORIGIN = "https://
 binding = "DB"
 database_name = "xivdyetools-presets"
 database_id = "e17d68a1-5a44-4c88-b02b-07d053cbe321"
+
+[[env.production.services]]
+binding = "DISCORD_WORKER"
+service = "xivdyetools-discord-worker"
 
 # Rate limiting configuration (built into worker logic)
 # - Public endpoints: 100 req/min per IP

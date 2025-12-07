@@ -10,6 +10,9 @@ export interface Env {
   // D1 Database
   DB: D1Database;
 
+  // Service bindings
+  DISCORD_WORKER?: Fetcher;
+
   // Environment variables
   ENVIRONMENT: string;
   API_VERSION: string;
