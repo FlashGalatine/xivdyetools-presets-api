@@ -6,7 +6,7 @@
 import { Hono } from 'hono';
 import type { Env, AuthContext, PresetStatus } from '../types.js';
 import { requireModerator } from '../middleware/auth.js';
-import { getPresetById, getPendingPresets, updatePresetStatus } from '../services/preset-service.js';
+import { getPresetById, getPendingPresets, updatePresetStatus, revertPreset } from '../services/preset-service.js';
 
 type Variables = {
   auth: AuthContext;
@@ -83,6 +83,78 @@ moderationRouter.patch('/:presetId/status', async (c) => {
   return c.json({
     success: true,
     preset: updatedPreset,
+  });
+});
+
+/**
+ * PATCH /api/v1/moderation/:presetId/revert
+ * Revert a preset to its previous values (when edit was flagged)
+ */
+moderationRouter.patch('/:presetId/revert', async (c) => {
+  // Require moderator privileges
+  const modError = requireModerator(c);
+  if (modError) return modError;
+
+  const auth = c.get('auth');
+  const presetId = c.req.param('presetId');
+
+  // Parse request body for reason
+  let body: { reason: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Bad Request', message: 'Invalid JSON body' }, 400);
+  }
+
+  // Validate reason
+  if (!body.reason || body.reason.length < 10 || body.reason.length > 200) {
+    return c.json(
+      {
+        error: 'Validation Error',
+        message: 'Reason must be 10-200 characters',
+      },
+      400
+    );
+  }
+
+  // Get current preset
+  const preset = await getPresetById(c.env.DB, presetId);
+  if (!preset) {
+    return c.json({ error: 'Not Found', message: 'Preset not found' }, 404);
+  }
+
+  // Check if there are previous values to revert to
+  if (!preset.previous_values) {
+    return c.json(
+      {
+        error: 'Bad Request',
+        message: 'This preset has no previous values to revert to',
+      },
+      400
+    );
+  }
+
+  // Perform the revert
+  const revertedPreset = await revertPreset(c.env.DB, presetId);
+  if (!revertedPreset) {
+    return c.json({ error: 'Server Error', message: 'Failed to revert preset' }, 500);
+  }
+
+  // Log moderation action
+  const logId = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  await c.env.DB.prepare(
+    `INSERT INTO moderation_log (id, preset_id, moderator_discord_id, action, reason, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  )
+    .bind(logId, presetId, auth.userDiscordId!, 'revert', body.reason, now)
+    .run();
+
+  return c.json({
+    success: true,
+    preset: revertedPreset,
+    message: 'Preset reverted to previous values',
   });
 });
 
