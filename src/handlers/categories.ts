@@ -15,6 +15,9 @@ export const categoriesRouter = new Hono<{ Bindings: Env; Variables: Variables }
 /**
  * GET /api/v1/categories
  * List all categories with preset counts
+ *
+ * PERFORMANCE: Categories change infrequently, so we cache the response
+ * at the edge (Cloudflare CDN) and in browsers for 60 seconds.
  */
 categoriesRouter.get('/', async (c) => {
   // Get categories with preset counts
@@ -47,12 +50,23 @@ categoriesRouter.get('/', async (c) => {
     preset_count: row.preset_count || 0,
   }));
 
-  return c.json({ categories });
+  // Set cache headers - cache for 60 seconds at edge and browser
+  // s-maxage = CDN cache time, max-age = browser cache time
+  // stale-while-revalidate allows serving stale content while fetching fresh
+  return c.json(
+    { categories },
+    200,
+    {
+      'Cache-Control': 'public, s-maxage=60, max-age=30, stale-while-revalidate=120',
+    }
+  );
 });
 
 /**
  * GET /api/v1/categories/:id
  * Get a single category by ID
+ *
+ * PERFORMANCE: Individual categories cached for 60 seconds at edge
  */
 categoriesRouter.get('/:id', async (c) => {
   const id = c.req.param('id');
@@ -90,5 +104,11 @@ categoriesRouter.get('/:id', async (c) => {
     preset_count: row.preset_count || 0,
   };
 
-  return c.json(category);
+  return c.json(
+    category,
+    200,
+    {
+      'Cache-Control': 'public, s-maxage=60, max-age=30, stale-while-revalidate=120',
+    }
+  );
 });
