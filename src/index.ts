@@ -32,14 +32,29 @@ const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 // Request logging
 app.use('*', logger());
 
+// Security headers middleware
+app.use('*', async (c, next) => {
+  await next();
+  // Prevent MIME-type sniffing attacks
+  c.header('X-Content-Type-Options', 'nosniff');
+  // Prevent clickjacking by denying iframe embedding
+  c.header('X-Frame-Options', 'DENY');
+  // Enforce HTTPS for 1 year (only in production)
+  if (c.env.ENVIRONMENT === 'production') {
+    c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+});
+
 // CORS configuration
 app.use(
   '*',
   cors({
     origin: (origin, c) => {
       const allowedOrigin = c.env.CORS_ORIGIN;
-      // Additional allowed origins (custom domain)
-      const additionalOrigins = ['https://xivdyetools.projectgalatine.com'];
+      // Additional allowed origins from environment (comma-separated)
+      const additionalOrigins = c.env.ADDITIONAL_CORS_ORIGINS
+        ? c.env.ADDITIONAL_CORS_ORIGINS.split(',').map((o: string) => o.trim())
+        : [];
 
       // SECURITY: Don't allow requests without an Origin header
       // (server-to-server calls should use API keys, not CORS)
@@ -120,10 +135,12 @@ app.notFound((c) => {
 
 // Global error handler
 app.onError((err, c) => {
-  console.error('Unhandled error:', err);
-
   // Don't expose internal errors in production
   const isDev = c.env.ENVIRONMENT === 'development';
+
+  // Sanitize logs in production - only log error name and message, not full stack
+  const logMessage = isDev ? err : { name: err.name, message: err.message };
+  console.error('Unhandled error:', logMessage);
 
   return c.json(
     {
