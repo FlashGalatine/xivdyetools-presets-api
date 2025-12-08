@@ -9,6 +9,7 @@
     "deploy:production": "wrangler deploy --env production",
     "db:migrate": "wrangler d1 execute xivdyetools-presets --remote --file=./schema.sql",
     "db:migrate:local": "wrangler d1 execute xivdyetools-presets --local --file=./schema.sql",
+    "db:migrate:indexes": "wrangler d1 execute xivdyetools-presets --remote --file=./migrations/002_add_composite_indexes.sql",
     "db:seed": "npx tsx scripts/migrate-presets.ts",
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
