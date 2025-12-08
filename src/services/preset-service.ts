@@ -15,6 +15,14 @@ import type {
 } from '../types.js';
 
 /**
+ * Escape special LIKE pattern characters in user input
+ * Prevents SQL injection via wildcard characters (%, _, \)
+ */
+function escapeLikePattern(str: string): string {
+  return str.replace(/[%_\\]/g, '\\$&');
+}
+
+/**
  * Generate a dye signature for duplicate detection
  * Sorts dye IDs and returns a JSON string
  */
@@ -73,8 +81,9 @@ export async function getPresets(
   }
 
   if (search) {
-    conditions.push('(name LIKE ? OR description LIKE ? OR tags LIKE ?)');
-    const searchPattern = `%${search}%`;
+    // Escape SQL LIKE wildcards to prevent pattern injection
+    conditions.push("(name LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')");
+    const searchPattern = `%${escapeLikePattern(search)}%`;
     params.push(searchPattern, searchPattern, searchPattern);
   }
 
