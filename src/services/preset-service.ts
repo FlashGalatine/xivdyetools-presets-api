@@ -109,25 +109,27 @@ export async function getPresets(
       break;
   }
 
-  // Get total count
-  const countQuery = `SELECT COUNT(*) as total FROM presets WHERE ${whereClause}`;
-  const countResult = await db.prepare(countQuery).bind(...params).first<{ total: number }>();
-  const total = countResult?.total || 0;
-
-  // Get paginated results
+  // PERFORMANCE: Use window function to get total count in same query
+  // This reduces database round-trips from 2 to 1 for paginated requests
+  // SQLite 3.25+ (supported by D1) supports COUNT(*) OVER()
   const offset = (page - 1) * limit;
-  const dataQuery = `
-    SELECT * FROM presets
+  const query = `
+    SELECT *, COUNT(*) OVER() as _total
+    FROM presets
     WHERE ${whereClause}
     ORDER BY ${orderBy}
     LIMIT ? OFFSET ?
   `;
-  const dataResult = await db
-    .prepare(dataQuery)
-    .bind(...params, limit, offset)
-    .all<PresetRow>();
 
-  const presets = (dataResult.results || []).map(rowToPreset);
+  const result = await db
+    .prepare(query)
+    .bind(...params, limit, offset)
+    .all<PresetRow & { _total: number }>();
+
+  const rows = result.results || [];
+  // Extract total from first row (all rows have same total via window function)
+  const total = rows.length > 0 ? rows[0]._total : 0;
+  const presets = rows.map(rowToPreset);
 
   return {
     presets,
