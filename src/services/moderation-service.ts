@@ -11,40 +11,57 @@ import { profanityLists } from '../data/profanity/index.js';
 // ============================================
 
 /**
+ * Escape special regex characters
+ */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Pre-compiled profanity regex patterns
+ * PERFORMANCE: Compile once at module load, not per-request
+ * Each entry contains the pre-compiled regex for word-boundary matching
+ */
+const compiledProfanityPatterns: RegExp[] = (() => {
+  const patterns: RegExp[] = [];
+
+  for (const [_locale, words] of Object.entries(profanityLists)) {
+    for (const word of words) {
+      // Use word boundary matching for better accuracy
+      // Pre-compile once to avoid per-request regex compilation
+      patterns.push(new RegExp(`\\b${escapeRegex(word.toLowerCase())}\\b`, 'i'));
+    }
+  }
+
+  return patterns;
+})();
+
+/**
  * Check text against local profanity word lists
+ * Uses pre-compiled regex patterns for performance
  */
 function checkLocalFilter(
   name: string,
   description: string
 ): ModerationResult | null {
   const textToCheck = `${name} ${description}`.toLowerCase();
+  const nameLower = name.toLowerCase();
 
-  // Check against all language lists
-  for (const [_locale, words] of Object.entries(profanityLists)) {
-    for (const word of words) {
-      // Use word boundary matching for better accuracy
-      const regex = new RegExp(`\\b${escapeRegex(word.toLowerCase())}\\b`, 'i');
-      if (regex.test(textToCheck)) {
-        // Determine which field was flagged
-        const flaggedField = regex.test(name.toLowerCase()) ? 'name' : 'description';
-        return {
-          passed: false,
-          flaggedField,
-          flaggedReason: 'Contains prohibited content',
-          method: 'local',
-        };
-      }
+  // Check against all pre-compiled patterns
+  for (const regex of compiledProfanityPatterns) {
+    if (regex.test(textToCheck)) {
+      // Determine which field was flagged
+      const flaggedField = regex.test(nameLower) ? 'name' : 'description';
+      return {
+        passed: false,
+        flaggedField,
+        flaggedReason: 'Contains prohibited content',
+        method: 'local',
+      };
     }
   }
 
   return null;
-}
-
-/**
- * Escape special regex characters
- */
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // ============================================
