@@ -280,6 +280,47 @@ describe('PresetService', () => {
 
             expect(result.has_more).toBe(false);
         });
+
+        it('should handle empty results with total 0', async () => {
+            const db = createMockD1Database();
+
+            db._setupMock(() => []);
+
+            const result = await getPresets(db, {});
+
+            expect(result.total).toBe(0);
+            expect(result.presets).toEqual([]);
+            expect(result.has_more).toBe(false);
+        });
+
+        it('should escape LIKE pattern special characters in search', async () => {
+            const db = createMockD1Database();
+            db._setupMock(() => []);
+
+            await getPresets(db, { search: 'test%_\\string' });
+
+            // The search pattern should be escaped
+            const query = db._queries.find((q) => q.includes('LIKE'));
+            expect(query).toBeDefined();
+        });
+
+        it('should filter by is_curated false', async () => {
+            const db = createMockD1Database();
+            db._setupMock(() => []);
+
+            await getPresets(db, { is_curated: false });
+
+            expect(db._bindings.some((b) => b.includes(0))).toBe(true);
+        });
+
+        it('should filter by custom status', async () => {
+            const db = createMockD1Database();
+            db._setupMock(() => []);
+
+            await getPresets(db, { status: 'pending' });
+
+            expect(db._bindings.some((b) => b.includes('pending'))).toBe(true);
+        });
     });
 
     // ============================================
@@ -530,6 +571,44 @@ describe('PresetService', () => {
             expect(db._bindings.some((b) => b.includes('New Name'))).toBe(true);
         });
 
+        it('should update description field', async () => {
+            const db = createMockD1Database();
+            db._setupMock(() => createMockPresetRow());
+
+            await updatePreset(db, 'preset-1', { description: 'New description that is long enough' });
+
+            const updateQuery = db._queries.find((q) => q.includes('UPDATE presets'));
+            expect(updateQuery).toContain('description = ?');
+            expect(db._bindings.some((b) => b.includes('New description that is long enough'))).toBe(true);
+        });
+
+        it('should update tags field', async () => {
+            const db = createMockD1Database();
+            db._setupMock(() => createMockPresetRow());
+
+            await updatePreset(db, 'preset-1', { tags: ['new', 'tags', 'here'] });
+
+            const updateQuery = db._queries.find((q) => q.includes('UPDATE presets'));
+            expect(updateQuery).toContain('tags = ?');
+            expect(db._bindings.some((b) => b.some((v) => typeof v === 'string' && v.includes('new')))).toBe(true);
+        });
+
+        it('should update multiple fields at once', async () => {
+            const db = createMockD1Database();
+            db._setupMock(() => createMockPresetRow());
+
+            await updatePreset(db, 'preset-1', {
+                name: 'New Name',
+                description: 'New description for this preset',
+                tags: ['updated'],
+            });
+
+            const updateQuery = db._queries.find((q) => q.includes('UPDATE presets'));
+            expect(updateQuery).toContain('name = ?');
+            expect(updateQuery).toContain('description = ?');
+            expect(updateQuery).toContain('tags = ?');
+        });
+
         it('should regenerate dye_signature when dyes change', async () => {
             const db = createMockD1Database();
             db._setupMock(() => createMockPresetRow());
@@ -556,6 +635,18 @@ describe('PresetService', () => {
             expect(db._bindings.some((b) => b.some((v) => typeof v === 'string' && v.includes('Old Name')))).toBe(true);
         });
 
+        it('should clear previous_values when explicitly set to undefined', async () => {
+            const db = createMockD1Database();
+            db._setupMock(() => createMockPresetRow());
+
+            // When previousValues is undefined, it should not be included in the update
+            await updatePreset(db, 'preset-1', { name: 'New Name' }, undefined);
+
+            const updateQuery = db._queries.find((q) => q.includes('UPDATE presets'));
+            // previous_values should not appear in query when undefined
+            expect(updateQuery).not.toContain('previous_values');
+        });
+
         it('should update status if newStatus provided', async () => {
             const db = createMockD1Database();
             db._setupMock(() => createMockPresetRow());
@@ -563,6 +654,16 @@ describe('PresetService', () => {
             await updatePreset(db, 'preset-1', { name: 'New Name' }, undefined, 'pending');
 
             expect(db._bindings.some((b) => b.includes('pending'))).toBe(true);
+        });
+
+        it('should always include updated_at', async () => {
+            const db = createMockD1Database();
+            db._setupMock(() => createMockPresetRow());
+
+            await updatePreset(db, 'preset-1', { name: 'New Name' });
+
+            const updateQuery = db._queries.find((q) => q.includes('UPDATE presets'));
+            expect(updateQuery).toContain('updated_at = ?');
         });
     });
 

@@ -109,6 +109,17 @@ describe('CategoriesHandler', () => {
             expect(body.categories).toEqual([]);
         });
 
+        it('should handle undefined results from database', async () => {
+            // Simulate database returning undefined results
+            mockDb._setupMock(() => undefined);
+
+            const res = await app.request('/api/v1/categories', {}, env);
+            const body = await res.json();
+
+            // Should fall back to empty array
+            expect(body.categories).toEqual([]);
+        });
+
         it('should handle null preset_count', async () => {
             const mockRows = [
                 { ...createMockCategoryRow(), preset_count: null },

@@ -558,4 +558,340 @@ describe('AuthMiddleware', () => {
             expect(body.authSource).toBe('bot');
         });
     });
+
+    // ============================================
+    // HMAC Request Signing (Bot Auth Security)
+    // ============================================
+
+    describe('Bot Auth with Signing Secret', () => {
+        let signingEnv: Env;
+
+        beforeEach(() => {
+            signingEnv = createMockEnv({
+                BOT_SIGNING_SECRET: 'test-signing-secret',
+            });
+        });
+
+        async function createValidSignature(
+            timestamp: string,
+            userDiscordId: string,
+            userName: string,
+            secret: string
+        ): Promise<string> {
+            const message = `${timestamp}:${userDiscordId}:${userName}`;
+            const encoder = new TextEncoder();
+            const key = await crypto.subtle.importKey(
+                'raw',
+                encoder.encode(secret),
+                { name: 'HMAC', hash: 'SHA-256' },
+                false,
+                ['sign']
+            );
+            const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(message));
+            return Array.from(new Uint8Array(signature))
+                .map((b) => b.toString(16).padStart(2, '0'))
+                .join('');
+        }
+
+        it('should reject bot auth without signature when signing secret configured', async () => {
+            const res = await app.request(
+                '/test/auth',
+                {
+                    headers: {
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123456789',
+                        'X-User-Discord-Name': 'TestUser',
+                    },
+                },
+                signingEnv
+            );
+            const body = await res.json();
+
+            // Should be unauthenticated due to missing signature
+            expect(body.isAuthenticated).toBe(false);
+        });
+
+        it('should authenticate with valid signature', async () => {
+            const timestamp = Math.floor(Date.now() / 1000).toString();
+            const signature = await createValidSignature(
+                timestamp,
+                '123456789',
+                'TestUser',
+                'test-signing-secret'
+            );
+
+            const res = await app.request(
+                '/test/auth',
+                {
+                    headers: {
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123456789',
+                        'X-User-Discord-Name': 'TestUser',
+                        'X-Request-Signature': signature,
+                        'X-Request-Timestamp': timestamp,
+                    },
+                },
+                signingEnv
+            );
+            const body = await res.json();
+
+            expect(body.isAuthenticated).toBe(true);
+            expect(body.authSource).toBe('bot');
+            expect(body.userDiscordId).toBe('123456789');
+        });
+
+        it('should reject request with invalid signature', async () => {
+            const timestamp = Math.floor(Date.now() / 1000).toString();
+
+            const res = await app.request(
+                '/test/auth',
+                {
+                    headers: {
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123456789',
+                        'X-User-Discord-Name': 'TestUser',
+                        'X-Request-Signature': 'invalid-signature',
+                        'X-Request-Timestamp': timestamp,
+                    },
+                },
+                signingEnv
+            );
+            const body = await res.json();
+
+            expect(body.isAuthenticated).toBe(false);
+        });
+
+        it('should reject request with expired timestamp (>5 minutes old)', async () => {
+            const expiredTimestamp = (Math.floor(Date.now() / 1000) - 400).toString(); // 6+ minutes ago
+            const signature = await createValidSignature(
+                expiredTimestamp,
+                '123456789',
+                'TestUser',
+                'test-signing-secret'
+            );
+
+            const res = await app.request(
+                '/test/auth',
+                {
+                    headers: {
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123456789',
+                        'X-User-Discord-Name': 'TestUser',
+                        'X-Request-Signature': signature,
+                        'X-Request-Timestamp': expiredTimestamp,
+                    },
+                },
+                signingEnv
+            );
+            const body = await res.json();
+
+            expect(body.isAuthenticated).toBe(false);
+        });
+
+        it('should reject request with future timestamp (>5 minutes ahead)', async () => {
+            const futureTimestamp = (Math.floor(Date.now() / 1000) + 400).toString(); // 6+ minutes in future
+            const signature = await createValidSignature(
+                futureTimestamp,
+                '123456789',
+                'TestUser',
+                'test-signing-secret'
+            );
+
+            const res = await app.request(
+                '/test/auth',
+                {
+                    headers: {
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123456789',
+                        'X-User-Discord-Name': 'TestUser',
+                        'X-Request-Signature': signature,
+                        'X-Request-Timestamp': futureTimestamp,
+                    },
+                },
+                signingEnv
+            );
+            const body = await res.json();
+
+            expect(body.isAuthenticated).toBe(false);
+        });
+
+        it('should reject request with invalid timestamp format', async () => {
+            const res = await app.request(
+                '/test/auth',
+                {
+                    headers: {
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123456789',
+                        'X-User-Discord-Name': 'TestUser',
+                        'X-Request-Signature': 'some-signature',
+                        'X-Request-Timestamp': 'not-a-number',
+                    },
+                },
+                signingEnv
+            );
+            const body = await res.json();
+
+            expect(body.isAuthenticated).toBe(false);
+        });
+
+        it('should handle missing timestamp', async () => {
+            const res = await app.request(
+                '/test/auth',
+                {
+                    headers: {
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123456789',
+                        'X-Request-Signature': 'some-signature',
+                    },
+                },
+                signingEnv
+            );
+            const body = await res.json();
+
+            expect(body.isAuthenticated).toBe(false);
+        });
+
+        it('should work with empty user ID and name in signature', async () => {
+            const timestamp = Math.floor(Date.now() / 1000).toString();
+            const signature = await createValidSignature(timestamp, '', '', 'test-signing-secret');
+
+            const res = await app.request(
+                '/test/auth',
+                {
+                    headers: {
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-Request-Signature': signature,
+                        'X-Request-Timestamp': timestamp,
+                    },
+                },
+                signingEnv
+            );
+            const body = await res.json();
+
+            expect(body.isAuthenticated).toBe(true);
+            expect(body.userDiscordId).toBeUndefined();
+        });
+
+        it('should reject tampered user ID (header spoofing attempt)', async () => {
+            const timestamp = Math.floor(Date.now() / 1000).toString();
+            // Sign with one user ID
+            const signature = await createValidSignature(
+                timestamp,
+                '123456789',
+                'TestUser',
+                'test-signing-secret'
+            );
+
+            // But send different user ID in header (spoofing attempt)
+            const res = await app.request(
+                '/test/auth',
+                {
+                    headers: {
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': 'different-user-id',
+                        'X-User-Discord-Name': 'TestUser',
+                        'X-Request-Signature': signature,
+                        'X-Request-Timestamp': timestamp,
+                    },
+                },
+                signingEnv
+            );
+            const body = await res.json();
+
+            expect(body.isAuthenticated).toBe(false);
+        });
+    });
+
+    // ============================================
+    // JWT Algorithm Validation
+    // ============================================
+
+    describe('JWT Security', () => {
+        it('should reject JWT with wrong algorithm (alg confusion attack)', async () => {
+            // Create a JWT with "none" algorithm
+            const header = { alg: 'none', typ: 'JWT' };
+            const payload = {
+                sub: 'user-123',
+                username: 'TestUser',
+                iat: Math.floor(Date.now() / 1000),
+                exp: Math.floor(Date.now() / 1000) + 3600,
+                iss: 'xivdyetools-oauth-worker',
+            };
+
+            const encodeBase64Url = (obj: object): string => {
+                const bytes = new TextEncoder().encode(JSON.stringify(obj));
+                let binary = '';
+                for (let i = 0; i < bytes.length; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            };
+
+            const fakeJwt = `${encodeBase64Url(header)}.${encodeBase64Url(payload)}.`;
+
+            const res = await app.request(
+                '/test/auth',
+                {
+                    headers: {
+                        Authorization: `Bearer ${fakeJwt}`,
+                    },
+                },
+                env
+            );
+            const body = await res.json();
+
+            expect(body.isAuthenticated).toBe(false);
+        });
+
+        it('should reject JWT with RS256 algorithm', async () => {
+            const header = { alg: 'RS256', typ: 'JWT' };
+            const payload = {
+                sub: 'user-123',
+                username: 'TestUser',
+                iat: Math.floor(Date.now() / 1000),
+                exp: Math.floor(Date.now() / 1000) + 3600,
+            };
+
+            const encodeBase64Url = (obj: object): string => {
+                const bytes = new TextEncoder().encode(JSON.stringify(obj));
+                let binary = '';
+                for (let i = 0; i < bytes.length; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            };
+
+            const fakeJwt = `${encodeBase64Url(header)}.${encodeBase64Url(payload)}.fake-signature`;
+
+            const res = await app.request(
+                '/test/auth',
+                {
+                    headers: {
+                        Authorization: `Bearer ${fakeJwt}`,
+                    },
+                },
+                env
+            );
+            const body = await res.json();
+
+            expect(body.isAuthenticated).toBe(false);
+        });
+
+        it('should reject JWT with invalid header JSON', async () => {
+            // Invalid base64 that decodes to invalid JSON
+            const invalidHeader = 'bm90LWpzb24';
+            const res = await app.request(
+                '/test/auth',
+                {
+                    headers: {
+                        Authorization: `Bearer ${invalidHeader}.payload.signature`,
+                    },
+                },
+                env
+            );
+            const body = await res.json();
+
+            expect(body.isAuthenticated).toBe(false);
+        });
+    });
 });

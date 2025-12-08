@@ -887,5 +887,316 @@ describe('PresetsHandler', () => {
 
             expect(res.status).toBe(400);
         });
+
+        it('should validate edit request description length', async () => {
+            const mockRow = createMockPresetRow({
+                id: 'preset-123',
+                author_discord_id: '123',
+            });
+            mockDb._setupMock(() => mockRow);
+
+            const res = await app.request(
+                '/api/v1/presets/preset-123',
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123',
+                    },
+                    body: JSON.stringify({ description: 'Short' }), // Too short
+                },
+                env
+            );
+
+            expect(res.status).toBe(400);
+            const body = await res.json();
+            expect(body.message).toContain('Description must be 10-200 characters');
+        });
+
+        it('should validate edit request dyes must be array', async () => {
+            const mockRow = createMockPresetRow({
+                id: 'preset-123',
+                author_discord_id: '123',
+            });
+            mockDb._setupMock(() => mockRow);
+
+            const res = await app.request(
+                '/api/v1/presets/preset-123',
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123',
+                    },
+                    body: JSON.stringify({ dyes: 'not-an-array' }),
+                },
+                env
+            );
+
+            expect(res.status).toBe(400);
+            const body = await res.json();
+            expect(body.message).toContain('Must include 2-5 dyes');
+        });
+
+        it('should validate edit request dyes count', async () => {
+            const mockRow = createMockPresetRow({
+                id: 'preset-123',
+                author_discord_id: '123',
+            });
+            mockDb._setupMock(() => mockRow);
+
+            const res = await app.request(
+                '/api/v1/presets/preset-123',
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123',
+                    },
+                    body: JSON.stringify({ dyes: [1] }), // Too few
+                },
+                env
+            );
+
+            expect(res.status).toBe(400);
+            const body = await res.json();
+            expect(body.message).toContain('Must include 2-5 dyes');
+        });
+
+        it('should validate edit request dyes are valid numbers', async () => {
+            const mockRow = createMockPresetRow({
+                id: 'preset-123',
+                author_discord_id: '123',
+            });
+            mockDb._setupMock(() => mockRow);
+
+            const res = await app.request(
+                '/api/v1/presets/preset-123',
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123',
+                    },
+                    body: JSON.stringify({ dyes: [1, 'invalid', 3] }),
+                },
+                env
+            );
+
+            expect(res.status).toBe(400);
+            const body = await res.json();
+            expect(body.message).toContain('Invalid dye IDs');
+        });
+
+        it('should validate edit request tags must be array', async () => {
+            const mockRow = createMockPresetRow({
+                id: 'preset-123',
+                author_discord_id: '123',
+            });
+            mockDb._setupMock(() => mockRow);
+
+            const res = await app.request(
+                '/api/v1/presets/preset-123',
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123',
+                    },
+                    body: JSON.stringify({ tags: 'not-an-array' }),
+                },
+                env
+            );
+
+            expect(res.status).toBe(400);
+            const body = await res.json();
+            expect(body.message).toContain('Tags must be an array');
+        });
+
+        it('should validate edit request max 10 tags', async () => {
+            const mockRow = createMockPresetRow({
+                id: 'preset-123',
+                author_discord_id: '123',
+            });
+            mockDb._setupMock(() => mockRow);
+
+            const res = await app.request(
+                '/api/v1/presets/preset-123',
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123',
+                    },
+                    body: JSON.stringify({
+                        tags: Array.from({ length: 11 }, (_, i) => `tag${i}`),
+                    }),
+                },
+                env
+            );
+
+            expect(res.status).toBe(400);
+            const body = await res.json();
+            expect(body.message).toContain('Maximum 10 tags');
+        });
+
+        it('should validate edit request tag max length', async () => {
+            const mockRow = createMockPresetRow({
+                id: 'preset-123',
+                author_discord_id: '123',
+            });
+            mockDb._setupMock(() => mockRow);
+
+            const res = await app.request(
+                '/api/v1/presets/preset-123',
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123',
+                    },
+                    body: JSON.stringify({
+                        tags: ['valid', 'A'.repeat(31)], // Second tag too long
+                    }),
+                },
+                env
+            );
+
+            expect(res.status).toBe(400);
+            const body = await res.json();
+            expect(body.message).toContain('max 30 characters');
+        });
+
+        it('should reject invalid JSON body', async () => {
+            const mockRow = createMockPresetRow({
+                id: 'preset-123',
+                author_discord_id: '123',
+            });
+            mockDb._setupMock(() => mockRow);
+
+            const res = await app.request(
+                '/api/v1/presets/preset-123',
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123',
+                    },
+                    body: 'not valid json',
+                },
+                env
+            );
+
+            expect(res.status).toBe(400);
+            const body = await res.json();
+            expect(body.message).toContain('Invalid JSON');
+        });
+
+        it('should return 404 for nonexistent preset', async () => {
+            mockDb._setupMock(() => null);
+
+            const res = await app.request(
+                '/api/v1/presets/nonexistent',
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123',
+                    },
+                    body: JSON.stringify({ name: 'Valid New Name' }),
+                },
+                env
+            );
+
+            expect(res.status).toBe(404);
+        });
+    });
+
+    // ============================================
+    // validateSubmission Edge Cases
+    // ============================================
+
+    describe('validateSubmission edge cases', () => {
+        it('should validate dye IDs are positive numbers', async () => {
+            mockDb._setupMock(() => ({ count: 0 }));
+
+            const res = await app.request(
+                '/api/v1/presets',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123',
+                    },
+                    body: JSON.stringify({
+                        ...createMockSubmission(),
+                        dyes: [1, 0, 3], // 0 is not valid
+                    }),
+                },
+                env
+            );
+
+            expect(res.status).toBe(400);
+            const body = await res.json();
+            expect(body.message).toContain('Invalid dye IDs');
+        });
+
+        it('should validate missing name', async () => {
+            mockDb._setupMock(() => ({ count: 0 }));
+
+            const res = await app.request(
+                '/api/v1/presets',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123',
+                    },
+                    body: JSON.stringify({
+                        ...createMockSubmission(),
+                        name: undefined,
+                    }),
+                },
+                env
+            );
+
+            expect(res.status).toBe(400);
+        });
+
+        it('should validate tag types in submission', async () => {
+            mockDb._setupMock(() => ({ count: 0 }));
+
+            const res = await app.request(
+                '/api/v1/presets',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer test-bot-secret',
+                        'X-User-Discord-ID': '123',
+                    },
+                    body: JSON.stringify({
+                        ...createMockSubmission(),
+                        tags: ['valid', 123], // Number is not valid
+                    }),
+                },
+                env
+            );
+
+            expect(res.status).toBe(400);
+            const body = await res.json();
+            expect(body.message).toContain('string');
+        });
     });
 });

@@ -104,6 +104,43 @@ describe('ModerationService', () => {
 
             expect(result.passed).toBe(true);
         });
+
+        it('should handle special regex characters in content', async () => {
+            const env = createMockEnv();
+
+            // These characters could cause regex issues if not escaped
+            const result = await moderateContent(
+                'Test.*+?^${}()|[]\\',
+                'Description with special [brackets] and {braces}',
+                env
+            );
+
+            expect(result.passed).toBe(true);
+        });
+
+        it('should handle very long content', async () => {
+            const env = createMockEnv();
+
+            const result = await moderateContent(
+                'A'.repeat(100),
+                'B'.repeat(500),
+                env
+            );
+
+            expect(result.passed).toBe(true);
+        });
+
+        it('should handle content with multiple whitespace', async () => {
+            const env = createMockEnv();
+
+            const result = await moderateContent(
+                '  Spaced   Name  ',
+                '  Description  with  lots    of    spaces  ',
+                env
+            );
+
+            expect(result.passed).toBe(true);
+        });
     });
 
     // ============================================
@@ -395,6 +432,72 @@ describe('ModerationService', () => {
             expect(embed.fields.some((f: { name: string }) => f.name === 'Name')).toBe(true);
             expect(embed.fields.some((f: { name: string }) => f.name === 'Submitted by')).toBe(true);
             expect(embed.fields.some((f: { name: string }) => f.name === 'Flagged Reason')).toBe(true);
+        });
+
+        it('should handle DM send failure gracefully', async () => {
+            const env = createMockEnv({
+                OWNER_DISCORD_ID: 'owner-123',
+                DISCORD_BOT_TOKEN: 'bot-token-abc',
+            });
+
+            // Mock creating DM channel successfully
+            fetchMock.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ id: 'dm-channel-id' }),
+            });
+
+            // Mock sending message fails
+            fetchMock.mockRejectedValueOnce(new Error('Failed to send DM'));
+
+            // Should not throw
+            await expect(notifyModerators(mockAlert, env)).resolves.not.toThrow();
+
+            // Both requests should have been attempted
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+        });
+
+        it('should send both webhook and DM if both configured', async () => {
+            const env = createMockEnv({
+                MODERATION_WEBHOOK_URL: 'https://discord.com/api/webhooks/123/abc',
+                OWNER_DISCORD_ID: 'owner-123',
+                DISCORD_BOT_TOKEN: 'bot-token-abc',
+            });
+
+            // Webhook success
+            fetchMock.mockResolvedValueOnce({ ok: true });
+            // DM channel creation success
+            fetchMock.mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({ id: 'dm-channel-id' }),
+            });
+            // DM send success
+            fetchMock.mockResolvedValueOnce({ ok: true });
+
+            await notifyModerators(mockAlert, env);
+
+            expect(fetchMock).toHaveBeenCalledTimes(3);
+        });
+
+        it('should truncate long descriptions in embed', async () => {
+            const env = createMockEnv({
+                MODERATION_WEBHOOK_URL: 'https://discord.com/api/webhooks/123/abc',
+            });
+
+            const alertWithLongDesc = {
+                ...mockAlert,
+                description: 'A'.repeat(500), // Very long description
+            };
+
+            fetchMock.mockResolvedValueOnce({ ok: true });
+
+            await notifyModerators(alertWithLongDesc, env);
+
+            const callBody = JSON.parse(fetchMock.mock.calls[0][1].body);
+            const embed = callBody.embeds[0];
+            const descField = embed.fields.find((f: { name: string }) => f.name === 'Description');
+
+            // Description should be truncated to 200 chars
+            expect(descField.value.length).toBeLessThanOrEqual(200);
         });
     });
 });

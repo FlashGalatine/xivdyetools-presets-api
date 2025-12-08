@@ -239,6 +239,16 @@ describe('Index/App', () => {
             // Verify production env is set correctly
             expect(prodEnv.ENVIRONMENT).toBe('production');
         });
+
+        it('should return 404 for force-error route in production', async () => {
+            const prodEnv = createMockEnv({ ENVIRONMENT: 'production' });
+            const res = await app.request('/__force-error', {}, prodEnv);
+
+            // In production, the force-error route returns 404 instead of throwing
+            expect(res.status).toBe(404);
+            const body = await res.json();
+            expect(body.error).toBe('Not Found');
+        });
     });
 
     // ============================================

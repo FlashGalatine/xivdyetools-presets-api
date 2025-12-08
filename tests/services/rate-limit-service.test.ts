@@ -6,6 +6,8 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
     checkSubmissionRateLimit,
     getRemainingSubmissions,
+    checkPublicRateLimit,
+    getClientIp,
 } from '../../src/services/rate-limit-service';
 import { createMockD1Database, resetCounters } from '../test-utils';
 
@@ -252,6 +254,166 @@ describe('RateLimitService', () => {
             const deniedResult = await checkSubmissionRateLimit(db, 'user-123');
             expect(deniedResult.allowed).toBe(false);
             expect(deniedResult.remaining).toBe(0);
+        });
+    });
+
+    // ============================================
+    // checkPublicRateLimit (IP-based)
+    // ============================================
+
+    describe('checkPublicRateLimit', () => {
+        it('should allow first request from new IP', () => {
+            const result = checkPublicRateLimit('192.168.1.1');
+
+            expect(result.allowed).toBe(true);
+            // remaining is calculated BEFORE this request is recorded
+            // so for a new IP, remaining is 100
+            expect(result.remaining).toBe(100);
+            expect(result.resetAt).toBeInstanceOf(Date);
+        });
+
+        it('should track multiple requests from same IP', () => {
+            const ip = '192.168.1.2';
+
+            // First request - returns 100 remaining (before adding this request)
+            let result = checkPublicRateLimit(ip);
+            expect(result.remaining).toBe(100);
+
+            // Second request - now 1 in log, so returns 99
+            result = checkPublicRateLimit(ip);
+            expect(result.remaining).toBe(99);
+
+            // Third request - now 2 in log, so returns 98
+            result = checkPublicRateLimit(ip);
+            expect(result.remaining).toBe(98);
+        });
+
+        it('should deny requests when limit is reached', () => {
+            const ip = '192.168.1.3';
+
+            // Exhaust the limit (100 requests)
+            for (let i = 0; i < 100; i++) {
+                checkPublicRateLimit(ip);
+            }
+
+            // 101st request should be denied
+            const result = checkPublicRateLimit(ip);
+            expect(result.allowed).toBe(false);
+            expect(result.remaining).toBe(0);
+        });
+
+        it('should track different IPs independently', () => {
+            const ip1 = '192.168.1.4';
+            const ip2 = '192.168.1.5';
+
+            // Use some of IP1's quota
+            for (let i = 0; i < 50; i++) {
+                checkPublicRateLimit(ip1);
+            }
+
+            // IP2 should still have full quota (100 before request is recorded)
+            const result = checkPublicRateLimit(ip2);
+            expect(result.remaining).toBe(100);
+        });
+
+        it('should calculate resetAt correctly based on oldest request in window', () => {
+            const ip = '192.168.1.6';
+
+            const result = checkPublicRateLimit(ip);
+
+            // Reset should be approximately 1 minute from the oldest request
+            const now = Date.now();
+            const resetTime = result.resetAt.getTime();
+
+            // Should be within 60 seconds (+/- some tolerance) from now
+            expect(resetTime).toBeGreaterThan(now);
+            expect(resetTime).toBeLessThanOrEqual(now + 61000);
+        });
+
+        it('should not add request to log when denied', () => {
+            const ip = '192.168.1.7';
+
+            // Exhaust the limit
+            for (let i = 0; i < 100; i++) {
+                checkPublicRateLimit(ip);
+            }
+
+            // Try one more - should be denied
+            const deniedResult = checkPublicRateLimit(ip);
+            expect(deniedResult.allowed).toBe(false);
+
+            // Try again - remaining should still be 0 (not negative)
+            const secondDeniedResult = checkPublicRateLimit(ip);
+            expect(secondDeniedResult.remaining).toBe(0);
+        });
+    });
+
+    // ============================================
+    // getClientIp
+    // ============================================
+
+    describe('getClientIp', () => {
+        it('should extract IP from CF-Connecting-IP header', () => {
+            const request = new Request('https://example.com', {
+                headers: {
+                    'CF-Connecting-IP': '203.0.113.1',
+                },
+            });
+
+            const ip = getClientIp(request);
+            expect(ip).toBe('203.0.113.1');
+        });
+
+        it('should fall back to X-Forwarded-For if CF-Connecting-IP not present', () => {
+            const request = new Request('https://example.com', {
+                headers: {
+                    'X-Forwarded-For': '198.51.100.1, 10.0.0.1, 10.0.0.2',
+                },
+            });
+
+            const ip = getClientIp(request);
+            expect(ip).toBe('198.51.100.1');
+        });
+
+        it('should return first IP in X-Forwarded-For chain', () => {
+            const request = new Request('https://example.com', {
+                headers: {
+                    'X-Forwarded-For': '192.0.2.1, 192.0.2.2, 192.0.2.3',
+                },
+            });
+
+            const ip = getClientIp(request);
+            expect(ip).toBe('192.0.2.1');
+        });
+
+        it('should trim whitespace from X-Forwarded-For IP', () => {
+            const request = new Request('https://example.com', {
+                headers: {
+                    'X-Forwarded-For': '  192.0.2.50  , 10.0.0.1',
+                },
+            });
+
+            const ip = getClientIp(request);
+            expect(ip).toBe('192.0.2.50');
+        });
+
+        it('should return "unknown" if no IP headers present', () => {
+            const request = new Request('https://example.com');
+
+            const ip = getClientIp(request);
+            expect(ip).toBe('unknown');
+        });
+
+        it('should prefer CF-Connecting-IP over X-Forwarded-For', () => {
+            const request = new Request('https://example.com', {
+                headers: {
+                    'CF-Connecting-IP': '203.0.113.100',
+                    'X-Forwarded-For': '198.51.100.200',
+                },
+            });
+
+            const ip = getClientIp(request);
+            expect(ip).toBe('203.0.113.100');
         });
     });
 });
