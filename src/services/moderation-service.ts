@@ -1,6 +1,9 @@
 /**
  * Moderation Service
  * Multi-language profanity filtering with local lists + Perspective API
+ *
+ * ARCHITECTURE: Uses lazy initialization with dependency injection for testability.
+ * Production code uses the default profanity lists, while tests can inject custom patterns.
  */
 
 import type { Env, ModerationResult } from '../types.js';
@@ -13,42 +16,82 @@ import { profanityLists } from '../data/profanity/index.js';
 /**
  * Escape special regex characters
  */
-function escapeRegex(str: string): string {
+export function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
- * Pre-compiled profanity regex patterns
- * PERFORMANCE: Compile once at module load, not per-request
- * Each entry contains the pre-compiled regex for word-boundary matching
+ * Compile profanity word lists into RegExp patterns
+ * Extracted for testability - can be called with custom word lists
  */
-const compiledProfanityPatterns: RegExp[] = (() => {
+export function compileProfanityPatterns(
+  wordLists: Record<string, readonly string[]>
+): RegExp[] {
   const patterns: RegExp[] = [];
 
-  for (const [_locale, words] of Object.entries(profanityLists)) {
+  for (const [_locale, words] of Object.entries(wordLists)) {
     for (const word of words) {
       // Use word boundary matching for better accuracy
-      // Pre-compile once to avoid per-request regex compilation
       patterns.push(new RegExp(`\\b${escapeRegex(word.toLowerCase())}\\b`, 'i'));
     }
   }
 
   return patterns;
-})();
+}
+
+/**
+ * Lazily initialized profanity patterns
+ * PERFORMANCE: Compiled once on first use, cached for subsequent requests
+ */
+let _compiledPatterns: RegExp[] | null = null;
+
+/**
+ * Get compiled profanity patterns (lazy initialization)
+ * Uses production profanity lists by default
+ */
+function getCompiledPatterns(): RegExp[] {
+  if (_compiledPatterns === null) {
+    _compiledPatterns = compileProfanityPatterns(profanityLists);
+  }
+  return _compiledPatterns;
+}
+
+/**
+ * Reset compiled patterns - FOR TESTING ONLY
+ * Allows tests to inject custom patterns via setTestPatterns()
+ */
+export function _resetPatternsForTesting(): void {
+  _compiledPatterns = null;
+}
+
+/**
+ * Set custom patterns - FOR TESTING ONLY
+ * Allows tests to inject patterns that will trigger the filter
+ */
+export function _setTestPatterns(patterns: RegExp[]): void {
+  _compiledPatterns = patterns;
+}
 
 /**
  * Check text against local profanity word lists
  * Uses pre-compiled regex patterns for performance
+ *
+ * @param name - The preset name to check
+ * @param description - The preset description to check
+ * @param patterns - Optional custom patterns (for testing). Uses compiled profanity lists by default.
+ * @returns ModerationResult if flagged, null if clean
  */
-function checkLocalFilter(
+export function checkLocalFilter(
   name: string,
-  description: string
+  description: string,
+  patterns?: RegExp[]
 ): ModerationResult | null {
+  const patternsToUse = patterns ?? getCompiledPatterns();
   const textToCheck = `${name} ${description}`.toLowerCase();
   const nameLower = name.toLowerCase();
 
-  // Check against all pre-compiled patterns
-  for (const regex of compiledProfanityPatterns) {
+  // Check against all patterns
+  for (const regex of patternsToUse) {
     if (regex.test(textToCheck)) {
       // Determine which field was flagged
       const flaggedField = regex.test(nameLower) ? 'name' : 'description';

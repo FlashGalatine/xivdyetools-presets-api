@@ -3,7 +3,15 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { moderateContent, notifyModerators } from '../../src/services/moderation-service';
+import {
+    moderateContent,
+    notifyModerators,
+    checkLocalFilter,
+    escapeRegex,
+    compileProfanityPatterns,
+    _resetPatternsForTesting,
+    _setTestPatterns,
+} from '../../src/services/moderation-service';
 import { createMockEnv, resetCounters } from '../test-utils';
 import type { Env } from '../../src/types';
 
@@ -16,11 +24,154 @@ describe('ModerationService', () => {
         resetCounters();
         fetchMock = vi.fn();
         globalThis.fetch = fetchMock;
+        // Reset patterns before each test
+        _resetPatternsForTesting();
     });
 
     afterEach(() => {
         globalThis.fetch = originalFetch;
         vi.clearAllMocks();
+        // Reset patterns after each test
+        _resetPatternsForTesting();
+    });
+
+    // ============================================
+    // escapeRegex Helper
+    // ============================================
+
+    describe('escapeRegex', () => {
+        it('should escape special regex characters', () => {
+            expect(escapeRegex('test.*')).toBe('test\\.\\*');
+            expect(escapeRegex('foo+bar')).toBe('foo\\+bar');
+            expect(escapeRegex('a?b')).toBe('a\\?b');
+            expect(escapeRegex('$100')).toBe('\\$100');
+            expect(escapeRegex('(test)')).toBe('\\(test\\)');
+            expect(escapeRegex('[abc]')).toBe('\\[abc\\]');
+        });
+
+        it('should leave normal characters unchanged', () => {
+            expect(escapeRegex('hello')).toBe('hello');
+            expect(escapeRegex('test123')).toBe('test123');
+        });
+    });
+
+    // ============================================
+    // compileProfanityPatterns
+    // ============================================
+
+    describe('compileProfanityPatterns', () => {
+        it('should compile word lists into RegExp patterns', () => {
+            const wordLists = {
+                en: ['bad', 'word'],
+                de: ['schlecht'],
+            };
+
+            const patterns = compileProfanityPatterns(wordLists);
+
+            expect(patterns).toHaveLength(3);
+            expect(patterns[0]).toBeInstanceOf(RegExp);
+        });
+
+        it('should create case-insensitive patterns', () => {
+            const patterns = compileProfanityPatterns({ en: ['test'] });
+
+            expect(patterns[0].test('TEST')).toBe(true);
+            expect(patterns[0].test('Test')).toBe(true);
+            expect(patterns[0].test('test')).toBe(true);
+        });
+
+        it('should use word boundary matching', () => {
+            const patterns = compileProfanityPatterns({ en: ['bad'] });
+
+            // Should match whole word
+            expect(patterns[0].test('bad')).toBe(true);
+            expect(patterns[0].test('very bad word')).toBe(true);
+
+            // Should NOT match partial words
+            expect(patterns[0].test('badger')).toBe(false);
+            expect(patterns[0].test('notbad')).toBe(false);
+        });
+
+        it('should handle empty word lists', () => {
+            const patterns = compileProfanityPatterns({});
+            expect(patterns).toHaveLength(0);
+        });
+    });
+
+    // ============================================
+    // checkLocalFilter - Direct Testing
+    // ============================================
+
+    describe('checkLocalFilter', () => {
+        it('should return null for clean content with custom patterns', () => {
+            const patterns = [/\bbadword\b/i];
+            const result = checkLocalFilter('Good Name', 'Nice description', patterns);
+            expect(result).toBeNull();
+        });
+
+        it('should flag content matching custom pattern in name', () => {
+            const patterns = [/\bbadword\b/i];
+            const result = checkLocalFilter('This is badword here', 'Clean description', patterns);
+
+            expect(result).not.toBeNull();
+            expect(result!.passed).toBe(false);
+            expect(result!.flaggedField).toBe('name');
+            expect(result!.method).toBe('local');
+        });
+
+        it('should flag content matching custom pattern in description only', () => {
+            const patterns = [/\bbadword\b/i];
+            const result = checkLocalFilter('Clean Name', 'This has badword in it', patterns);
+
+            expect(result).not.toBeNull();
+            expect(result!.passed).toBe(false);
+            expect(result!.flaggedField).toBe('description');
+            expect(result!.method).toBe('local');
+        });
+
+        it('should check against multiple patterns', () => {
+            const patterns = [/\bword1\b/i, /\bword2\b/i, /\bword3\b/i];
+
+            // First pattern doesn't match, second does
+            const result = checkLocalFilter('Contains word2', 'Description', patterns);
+
+            expect(result).not.toBeNull();
+            expect(result!.passed).toBe(false);
+        });
+
+        it('should use injected patterns when set via _setTestPatterns', () => {
+            _setTestPatterns([/\btestbadword\b/i]);
+
+            // Now checkLocalFilter without explicit patterns should use injected ones
+            const result = checkLocalFilter('Has testbadword', 'Clean', undefined);
+
+            expect(result).not.toBeNull();
+            expect(result!.passed).toBe(false);
+            expect(result!.flaggedField).toBe('name');
+        });
+
+        it('should return clean after patterns are reset', () => {
+            _setTestPatterns([/\btestbadword\b/i]);
+            _resetPatternsForTesting();
+
+            // After reset, should use default empty patterns
+            const result = checkLocalFilter('Has testbadword', 'Clean', undefined);
+
+            // With empty default patterns, nothing should be flagged
+            expect(result).toBeNull();
+        });
+
+        it('should handle case insensitivity correctly', () => {
+            const patterns = [/\bBADWORD\b/i];
+
+            const result1 = checkLocalFilter('badword', 'Clean', patterns);
+            const result2 = checkLocalFilter('BADWORD', 'Clean', patterns);
+            const result3 = checkLocalFilter('BadWord', 'Clean', patterns);
+
+            expect(result1).not.toBeNull();
+            expect(result2).not.toBeNull();
+            expect(result3).not.toBeNull();
+        });
     });
 
     // ============================================
@@ -140,6 +291,47 @@ describe('ModerationService', () => {
             );
 
             expect(result.passed).toBe(true);
+        });
+
+        it('should return early when local filter catches flagged content', async () => {
+            // Inject custom patterns that WILL match
+            _setTestPatterns([/\bflaggedword\b/i]);
+
+            const env = createMockEnv({ PERSPECTIVE_API_KEY: 'test-api-key' });
+
+            const result = await moderateContent(
+                'Contains flaggedword here',
+                'Normal description',
+                env
+            );
+
+            // Should fail from local filter
+            expect(result.passed).toBe(false);
+            expect(result.method).toBe('local');
+            expect(result.flaggedField).toBe('name');
+            expect(result.flaggedReason).toBe('Contains prohibited content');
+
+            // Perspective API should NOT be called because local filter returned early
+            expect(fetchMock).not.toHaveBeenCalled();
+        });
+
+        it('should flag description when local filter matches only description', async () => {
+            _setTestPatterns([/\bbadcontent\b/i]);
+
+            const env = createMockEnv({ PERSPECTIVE_API_KEY: 'test-api-key' });
+
+            const result = await moderateContent(
+                'Clean Name',
+                'This description has badcontent in it',
+                env
+            );
+
+            expect(result.passed).toBe(false);
+            expect(result.method).toBe('local');
+            expect(result.flaggedField).toBe('description');
+
+            // Should not reach Perspective API
+            expect(fetchMock).not.toHaveBeenCalled();
         });
     });
 
