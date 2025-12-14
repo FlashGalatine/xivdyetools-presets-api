@@ -164,10 +164,15 @@ async function verifyJWT(token: string, secret: string): Promise<JWTPayload | nu
 
 /**
  * Check if a user ID is in the moderator list
+ * Handles various formats: comma-separated, space-separated, newline-separated
  */
 function checkModerator(userDiscordId: string | undefined, moderatorIds: string): boolean {
   if (!userDiscordId || !moderatorIds) return false;
-  const ids = moderatorIds.split(',').map((id) => id.trim());
+  // Split on any combination of whitespace and/or commas for maximum flexibility
+  // This handles: "123,456", "123, 456", "123 456", "123\n456", etc.
+  const ids = moderatorIds
+    .split(/[\s,]+/)
+    .filter(Boolean); // Remove empty strings from split
   return ids.includes(userDiscordId);
 }
 
