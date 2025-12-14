@@ -179,6 +179,9 @@ presetsRouter.delete('/:id', async (c) => {
   }
 
   // Delete votes and preset in transaction
+  // PRESETS-PERF-001: Using batch() for atomicity guarantee, not performance.
+  // D1 batch() ensures both deletes succeed or both fail.
+  // For 2 queries, overhead is negligible vs. transaction safety benefit.
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM votes WHERE preset_id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM presets WHERE id = ?').bind(id),
@@ -294,6 +297,8 @@ presetsRouter.patch('/:id', async (c) => {
   }
 
   // If flagged, notify Discord for moderation
+  // PRESETS-REF-002: Fire-and-forget notification - errors don't fail the request
+  // but are logged with preset context for debugging
   if (moderationStatus === 'pending') {
     c.executionCtx.waitUntil(
       notifyDiscordBot(c.env, {
@@ -307,7 +312,8 @@ presetsRouter.patch('/:id', async (c) => {
           source: auth.authSource,
         },
       }).catch((err) => {
-        console.error('Failed to notify Discord worker:', err);
+        // Log with context for easier debugging
+        console.error(`[PRESETS-REF-002] Discord notification failed for preset edit: id=${updatedPreset.id}, name="${updatedPreset.name}"`, err);
       })
     );
   }
@@ -413,6 +419,7 @@ presetsRouter.post('/', async (c) => {
   await addVote(c.env.DB, preset.id, auth.userDiscordId!);
 
   // Send notification to Discord worker (non-blocking)
+  // PRESETS-REF-002: Fire-and-forget notification - errors don't fail the request
   // Use waitUntil to keep the worker alive while notification completes
   c.executionCtx.waitUntil(
     notifyDiscordBot(c.env, {
@@ -426,8 +433,8 @@ presetsRouter.post('/', async (c) => {
         source: auth.authSource,
       },
     }).catch((err) => {
-      // Log but don't fail the request
-      console.error('Failed to notify Discord worker:', err);
+      // Log with context for easier debugging
+      console.error(`[PRESETS-REF-002] Discord notification failed for new preset: id=${preset.id}, name="${preset.name}"`, err);
     })
   );
 
