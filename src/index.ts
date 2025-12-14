@@ -17,14 +17,20 @@ import { moderationRouter } from './handlers/moderation.js';
 // Import middleware
 import { authMiddleware } from './middleware/auth.js';
 import { publicRateLimitMiddleware } from './middleware/rate-limit.js';
+import { requestIdMiddleware, getRequestId } from './middleware/request-id.js';
+import { validateEnv, logValidationErrors } from './utils/env-validation.js';
 
 // Extend Hono context with our custom variables
 type Variables = {
   auth: AuthContext;
+  requestId: string;
 };
 
 // Create Hono app with typed bindings
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
+
+// Track if we've validated env in this isolate
+let envValidated = false;
 
 // ============================================
 // GLOBAL MIDDLEWARE
@@ -32,6 +38,28 @@ const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 // Request logging
 app.use('*', logger());
+
+// Request ID middleware (must be early for tracing)
+app.use('*', requestIdMiddleware);
+
+// Environment validation middleware
+// Validates required env vars once per isolate and caches result
+app.use('*', async (c, next) => {
+  if (!envValidated) {
+    const result = validateEnv(c.env);
+    envValidated = true;
+    if (!result.valid) {
+      logValidationErrors(result.errors);
+      // In production, fail fast on misconfiguration
+      if (c.env.ENVIRONMENT === 'production') {
+        return c.json({ error: 'Service misconfigured' }, 500);
+      }
+      // In development, log warnings but continue
+      console.warn('Continuing with invalid env configuration (development mode)');
+    }
+  }
+  await next();
+});
 
 // Security headers middleware
 app.use('*', async (c, next) => {
@@ -171,17 +199,19 @@ app.notFound((c) => {
 
 // Global error handler
 app.onError((err, c) => {
+  const requestId = getRequestId(c);
   // Don't expose internal errors in production
   const isDev = c.env.ENVIRONMENT === 'development';
 
   // Sanitize logs in production - only log error name and message, not full stack
   const logMessage = isDev ? err : { name: err.name, message: err.message };
-  console.error('Unhandled error:', logMessage);
+  console.error(`[${requestId}] Unhandled error:`, logMessage);
 
   return c.json(
     {
       error: 'Internal Server Error',
       message: isDev ? err.message : 'An unexpected error occurred',
+      requestId,
       ...(isDev && { stack: err.stack }),
     },
     500
