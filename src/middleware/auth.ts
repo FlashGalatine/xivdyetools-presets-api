@@ -14,12 +14,22 @@ type Variables = {
 // HMAC REQUEST SIGNING (Bot Auth Security)
 // ============================================
 
+// Maximum age of request signature (2 minutes)
+// Tighter window reduces replay attack window while allowing for clock skew
+const SIGNATURE_MAX_AGE_SECONDS = 120;
+
 /**
  * Verify HMAC signature for bot requests
  * This prevents header spoofing attacks by cryptographically
  * binding the user headers to the request
  *
  * Signature format: HMAC-SHA256(timestamp:userDiscordId:userName)
+ *
+ * SECURITY NOTES:
+ * - Timestamp validation prevents replay attacks outside the time window
+ * - Within the window, an attacker could replay the exact same request
+ * - For complete replay protection, consider adding KV-based signature tracking
+ * - The attack requires intercepting the request AND replaying within 2 minutes
  */
 async function verifyBotRequestSignature(
   signature: string | undefined,
@@ -30,10 +40,11 @@ async function verifyBotRequestSignature(
 ): Promise<boolean> {
   if (!signature || !timestamp) return false;
 
-  // Reject requests older than 5 minutes to prevent replay attacks
+  // Reject requests outside the time window to prevent replay attacks
+  // Using a tighter 2-minute window (was 5 minutes) to reduce replay risk
   const requestTime = parseInt(timestamp, 10);
   const now = Math.floor(Date.now() / 1000);
-  if (isNaN(requestTime) || Math.abs(now - requestTime) > 300) {
+  if (isNaN(requestTime) || Math.abs(now - requestTime) > SIGNATURE_MAX_AGE_SECONDS) {
     return false;
   }
 
