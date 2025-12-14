@@ -43,7 +43,7 @@ presetsRouter.get('/', async (c) => {
     status: status as PresetFilters['status'],
     sort: sort as PresetFilters['sort'],
     page: page ? parseInt(page, 10) : undefined,
-    limit: limit ? Math.min(parseInt(limit, 10), 100) : undefined,
+    limit: limit ? Math.min(parseInt(limit, 10), 50) : undefined, // Cap at 50 for performance
     is_curated: is_curated === 'true' ? true : is_curated === 'false' ? false : undefined,
   };
 
@@ -126,6 +126,11 @@ presetsRouter.patch('/refresh-author', async (c) => {
   if (userError) return userError;
 
   const auth = c.get('auth');
+
+  // Guard against undefined userDiscordId (defensive coding)
+  if (!auth.userDiscordId) {
+    return c.json({ error: 'Bad Request', message: 'User ID required for author refresh' }, 400);
+  }
 
   // Update all presets by this user to use their current display name
   const result = await c.env.DB.prepare(`
@@ -444,83 +449,92 @@ presetsRouter.post('/', async (c) => {
 // VALIDATION HELPERS
 // ============================================
 
-function validateSubmission(body: PresetSubmission): string | null {
-  // Name validation (2-50 chars)
-  if (!body.name || body.name.length < 2 || body.name.length > 50) {
+// Valid categories for presets
+const VALID_CATEGORIES = ['jobs', 'grand-companies', 'seasons', 'events', 'aesthetics', 'community'];
+
+/**
+ * Validate individual fields (shared between create and edit)
+ */
+function validateName(name: string): string | null {
+  if (name.length < 2 || name.length > 50) {
     return 'Name must be 2-50 characters';
   }
+  return null;
+}
 
-  // Description validation (10-200 chars)
-  if (!body.description || body.description.length < 10 || body.description.length > 200) {
+function validateDescription(description: string): string | null {
+  if (description.length < 10 || description.length > 200) {
     return 'Description must be 10-200 characters';
   }
+  return null;
+}
 
-  // Category validation
-  const validCategories = ['jobs', 'grand-companies', 'seasons', 'events', 'aesthetics', 'community'];
-  if (!body.category_id || !validCategories.includes(body.category_id)) {
+function validateDyes(dyes: unknown): string | null {
+  if (!Array.isArray(dyes) || dyes.length < 2 || dyes.length > 5) {
+    return 'Must include 2-5 dyes';
+  }
+  if (!dyes.every((id) => typeof id === 'number' && id > 0)) {
+    return 'Invalid dye IDs';
+  }
+  return null;
+}
+
+function validateTags(tags: unknown): string | null {
+  if (!Array.isArray(tags)) {
+    return 'Tags must be an array';
+  }
+  if (tags.length > 10) {
+    return 'Maximum 10 tags allowed';
+  }
+  if (tags.some((tag) => typeof tag !== 'string' || tag.length > 30)) {
+    return 'Each tag must be a string of max 30 characters';
+  }
+  return null;
+}
+
+function validateSubmission(body: PresetSubmission): string | null {
+  // All fields required for creation
+  if (!body.name) return 'Name is required';
+  const nameError = validateName(body.name);
+  if (nameError) return nameError;
+
+  if (!body.description) return 'Description is required';
+  const descError = validateDescription(body.description);
+  if (descError) return descError;
+
+  if (!body.category_id || !VALID_CATEGORIES.includes(body.category_id)) {
     return 'Invalid category';
   }
 
-  // Dyes validation (2-5 dyes)
-  if (!Array.isArray(body.dyes) || body.dyes.length < 2 || body.dyes.length > 5) {
-    return 'Must include 2-5 dyes';
-  }
+  const dyesError = validateDyes(body.dyes);
+  if (dyesError) return dyesError;
 
-  // Validate dye IDs are numbers
-  if (!body.dyes.every((id) => typeof id === 'number' && id > 0)) {
-    return 'Invalid dye IDs';
-  }
-
-  // Tags validation (0-10 tags, max 30 chars each)
-  if (!Array.isArray(body.tags)) {
-    return 'Tags must be an array';
-  }
-  if (body.tags.length > 10) {
-    return 'Maximum 10 tags allowed';
-  }
-  if (body.tags.some((tag) => typeof tag !== 'string' || tag.length > 30)) {
-    return 'Each tag must be a string of max 30 characters';
-  }
+  const tagsError = validateTags(body.tags);
+  if (tagsError) return tagsError;
 
   return null;
 }
 
 function validateEditRequest(body: PresetEditRequest): string | null {
-  // Name validation (2-50 chars) - only if provided
+  // All fields optional for edit, but validate if provided
   if (body.name !== undefined) {
-    if (body.name.length < 2 || body.name.length > 50) {
-      return 'Name must be 2-50 characters';
-    }
+    const nameError = validateName(body.name);
+    if (nameError) return nameError;
   }
 
-  // Description validation (10-200 chars) - only if provided
   if (body.description !== undefined) {
-    if (body.description.length < 10 || body.description.length > 200) {
-      return 'Description must be 10-200 characters';
-    }
+    const descError = validateDescription(body.description);
+    if (descError) return descError;
   }
 
-  // Dyes validation (2-5 dyes) - only if provided
   if (body.dyes !== undefined) {
-    if (!Array.isArray(body.dyes) || body.dyes.length < 2 || body.dyes.length > 5) {
-      return 'Must include 2-5 dyes';
-    }
-    if (!body.dyes.every((id) => typeof id === 'number' && id > 0)) {
-      return 'Invalid dye IDs';
-    }
+    const dyesError = validateDyes(body.dyes);
+    if (dyesError) return dyesError;
   }
 
-  // Tags validation (0-10 tags, max 30 chars each) - only if provided
   if (body.tags !== undefined) {
-    if (!Array.isArray(body.tags)) {
-      return 'Tags must be an array';
-    }
-    if (body.tags.length > 10) {
-      return 'Maximum 10 tags allowed';
-    }
-    if (body.tags.some((tag) => typeof tag !== 'string' || tag.length > 30)) {
-      return 'Each tag must be a string of max 30 characters';
-    }
+    const tagsError = validateTags(body.tags);
+    if (tagsError) return tagsError;
   }
 
   return null;
