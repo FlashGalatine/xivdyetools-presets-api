@@ -96,6 +96,29 @@ app.use('/api/*', publicRateLimitMiddleware);
 // Authentication middleware (sets auth context)
 app.use('*', authMiddleware);
 
+// SECURITY: Content-Type validation for mutation requests
+// Prevents potential JSON smuggling and ensures consistent API behavior
+app.use('/api/*', async (c, next) => {
+  const method = c.req.method;
+  if (['POST', 'PATCH', 'PUT'].includes(method)) {
+    const contentType = c.req.header('content-type');
+    // Allow requests with empty body (some deletions) or valid JSON content-type
+    const contentLength = c.req.header('content-length');
+    const hasBody = contentLength && parseInt(contentLength) > 0;
+
+    if (hasBody && (!contentType || !contentType.includes('application/json'))) {
+      return c.json(
+        {
+          error: 'Unsupported Media Type',
+          message: 'Content-Type must be application/json',
+        },
+        415
+      );
+    }
+  }
+  await next();
+});
+
 // ============================================
 // HEALTH CHECK
 // ============================================
