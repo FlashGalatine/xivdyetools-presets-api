@@ -202,10 +202,16 @@ export async function authMiddleware(
 
     // Method 1: Bot authentication (BOT_API_SECRET)
     if (token === c.env.BOT_API_SECRET) {
-      // SECURITY: When BOT_SIGNING_SECRET is configured, require HMAC signature
+      // SECURITY: Always require HMAC signature for bot authentication
       // This prevents header spoofing attacks where an attacker with the API secret
       // could set arbitrary X-User-Discord-ID headers to impersonate users
-      if (c.env.BOT_SIGNING_SECRET) {
+      if (!c.env.BOT_SIGNING_SECRET) {
+        // CRITICAL: BOT_SIGNING_SECRET not configured - reject bot auth entirely
+        // This prevents falling back to trusting user-supplied headers
+        console.error('Bot auth: BOT_SIGNING_SECRET not configured - rejecting authentication');
+        // Don't authenticate - let the request proceed as unauthenticated
+        // The route handler will return 401 if auth is required
+      } else {
         const signature = c.req.header('X-Request-Signature');
         const timestamp = c.req.header('X-Request-Timestamp');
 
@@ -235,16 +241,6 @@ export async function authMiddleware(
             authSource: 'bot',
           };
         }
-      } else {
-        // Legacy mode: No signing secret configured
-        // WARNING: This trusts user-supplied headers - configure BOT_SIGNING_SECRET for security
-        auth = {
-          isAuthenticated: true,
-          isModerator: checkModerator(userDiscordId, c.env.MODERATOR_IDS),
-          userDiscordId: userDiscordId || undefined,
-          userName: userName || undefined,
-          authSource: 'bot',
-        };
       }
     }
     // Method 2: Web authentication (JWT)
