@@ -66,10 +66,8 @@ describe('PresetsHandler', () => {
         });
 
         it('should filter by category', async () => {
-            mockDb._setupMock((query) => {
-                if (query.includes('COUNT')) return { total: 0 };
-                return [];
-            });
+            // Return empty array - service uses window function COUNT(*) OVER() not separate count query
+            mockDb._setupMock(() => []);
 
             await app.request('/api/v1/presets?category=jobs', {}, env);
 
@@ -77,10 +75,8 @@ describe('PresetsHandler', () => {
         });
 
         it('should filter by search', async () => {
-            mockDb._setupMock((query) => {
-                if (query.includes('COUNT')) return { total: 0 };
-                return [];
-            });
+            // Return empty array - service uses window function COUNT(*) OVER() not separate count query
+            mockDb._setupMock(() => []);
 
             await app.request('/api/v1/presets?search=sunset', {}, env);
 
@@ -88,10 +84,8 @@ describe('PresetsHandler', () => {
         });
 
         it('should filter by is_curated', async () => {
-            mockDb._setupMock((query) => {
-                if (query.includes('COUNT')) return { total: 0 };
-                return [];
-            });
+            // Return empty array - service uses window function COUNT(*) OVER() not separate count query
+            mockDb._setupMock(() => []);
 
             await app.request('/api/v1/presets?is_curated=true', {}, env);
 
@@ -99,10 +93,8 @@ describe('PresetsHandler', () => {
         });
 
         it('should respect page and limit params', async () => {
-            mockDb._setupMock((query) => {
-                if (query.includes('COUNT')) return { total: 100 };
-                return [];
-            });
+            // Return empty array - the page/limit assertions don't need actual data
+            mockDb._setupMock(() => []);
 
             const res = await app.request('/api/v1/presets?page=3&limit=10', {}, env);
             const body = await res.json() as { page: number; limit: number };
@@ -112,10 +104,8 @@ describe('PresetsHandler', () => {
         });
 
         it('should cap limit at 100', async () => {
-            mockDb._setupMock((query) => {
-                if (query.includes('COUNT')) return { total: 0 };
-                return [];
-            });
+            // Return empty array - the limit cap assertion doesn't need actual data
+            mockDb._setupMock(() => []);
 
             const res = await app.request('/api/v1/presets?limit=500', {}, env);
             const body = await res.json() as { limit: number };

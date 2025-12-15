@@ -114,7 +114,7 @@ describe('CategoriesHandler', () => {
             mockDb._setupMock(() => undefined);
 
             const res = await app.request('/api/v1/categories', {}, env);
-            const body = await res.json();
+            const body = await res.json() as { categories: unknown[] };
 
             // Should fall back to empty array
             expect(body.categories).toEqual([]);

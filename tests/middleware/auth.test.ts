@@ -605,7 +605,7 @@ describe('AuthMiddleware', () => {
                 },
                 signingEnv
             );
-            const body = await res.json();
+            const body = await res.json() as { isAuthenticated: boolean };
 
             // Should be unauthenticated due to missing signature
             expect(body.isAuthenticated).toBe(false);

@@ -164,10 +164,8 @@ describe('PresetService', () => {
 
         it('should filter by category', async () => {
             const db = createMockD1Database();
-            db._setupMock((query) => {
-                if (query.includes('COUNT')) return { total: 0 };
-                return [];
-            });
+            // Return empty array - service uses window function COUNT(*) OVER() not separate count query
+            db._setupMock(() => []);
 
             await getPresets(db, { category: 'jobs' });
 
@@ -177,10 +175,8 @@ describe('PresetService', () => {
 
         it('should filter by search term', async () => {
             const db = createMockD1Database();
-            db._setupMock((query) => {
-                if (query.includes('COUNT')) return { total: 0 };
-                return [];
-            });
+            // Return empty array - service uses window function COUNT(*) OVER() not separate count query
+            db._setupMock(() => []);
 
             await getPresets(db, { search: 'red' });
 
@@ -190,10 +186,8 @@ describe('PresetService', () => {
 
         it('should filter by is_curated', async () => {
             const db = createMockD1Database();
-            db._setupMock((query) => {
-                if (query.includes('COUNT')) return { total: 0 };
-                return [];
-            });
+            // Return empty array - service uses window function COUNT(*) OVER() not separate count query
+            db._setupMock(() => []);
 
             await getPresets(db, { is_curated: true });
 
@@ -203,10 +197,8 @@ describe('PresetService', () => {
 
         it('should sort by popular (default)', async () => {
             const db = createMockD1Database();
-            db._setupMock((query) => {
-                if (query.includes('COUNT')) return { total: 0 };
-                return [];
-            });
+            // Return empty array - service uses window function COUNT(*) OVER() not separate count query
+            db._setupMock(() => []);
 
             await getPresets(db, { sort: 'popular' });
 
@@ -215,10 +207,8 @@ describe('PresetService', () => {
 
         it('should sort by recent', async () => {
             const db = createMockD1Database();
-            db._setupMock((query) => {
-                if (query.includes('COUNT')) return { total: 0 };
-                return [];
-            });
+            // Return empty array - service uses window function COUNT(*) OVER() not separate count query
+            db._setupMock(() => []);
 
             await getPresets(db, { sort: 'recent' });
 
@@ -227,10 +217,8 @@ describe('PresetService', () => {
 
         it('should sort by name', async () => {
             const db = createMockD1Database();
-            db._setupMock((query) => {
-                if (query.includes('COUNT')) return { total: 0 };
-                return [];
-            });
+            // Return empty array - service uses window function COUNT(*) OVER() not separate count query
+            db._setupMock(() => []);
 
             await getPresets(db, { sort: 'name' });
 
@@ -239,10 +227,8 @@ describe('PresetService', () => {
 
         it('should paginate correctly', async () => {
             const db = createMockD1Database();
-            db._setupMock((query) => {
-                if (query.includes('COUNT')) return { total: 50 };
-                return [];
-            });
+            // Return empty array - we're just testing the bindings are correct
+            db._setupMock(() => []);
 
             const result = await getPresets(db, { page: 3, limit: 10 });
 
@@ -253,6 +239,7 @@ describe('PresetService', () => {
 
         it('should calculate has_more correctly', async () => {
             const db = createMockD1Database();
+            // Window function embeds _total in each row
             const mockRows = [
                 { ...createMockPresetRow(), _total: 5 },
                 { ...createMockPresetRow(), _total: 5 }
@@ -269,12 +256,10 @@ describe('PresetService', () => {
 
         it('should return has_more false on last page', async () => {
             const db = createMockD1Database();
-            const mockRows = [createMockPresetRow()];
+            // Window function embeds _total in each row - on last page with 1 item when total is 3, page 2, limit 2
+            const mockRows = [{ ...createMockPresetRow(), _total: 3 }];
 
-            db._setupMock((query) => {
-                if (query.includes('COUNT')) return { total: 3 };
-                return mockRows;
-            });
+            db._setupMock(() => mockRows);
 
             const result = await getPresets(db, { page: 2, limit: 2 });
 
