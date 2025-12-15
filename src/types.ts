@@ -9,7 +9,10 @@
 // RE-EXPORT SHARED TYPES
 // ============================================
 
-// Preset types
+/**
+ * @deprecated Import directly from '@xivdyetools/types' instead.
+ * These re-exports will be removed in the next major version.
+ */
 export type {
   PresetStatus,
   PresetCategory,
@@ -27,10 +30,16 @@ export type {
   CategoryListResponse,
 } from '@xivdyetools/types';
 
-// Auth types
+/**
+ * @deprecated Import directly from '@xivdyetools/types' instead.
+ * These re-exports will be removed in the next major version.
+ */
 export type { AuthSource, AuthContext } from '@xivdyetools/types';
 
-// API types
+/**
+ * @deprecated Import directly from '@xivdyetools/types' instead.
+ * These re-exports will be removed in the next major version.
+ */
 export type { ModerationResult, ModerationLogEntry, RateLimitResult } from '@xivdyetools/types';
 
 // ============================================

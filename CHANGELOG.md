@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2025-12-14
+
+### Deprecated
+
+#### Type Re-exports
+The following re-exports from `src/types.ts` are deprecated and will be removed in the next major version:
+
+- **Preset Types**: Import from `@xivdyetools/types` instead
+- **Auth Types** (AuthSource, AuthContext): Import from `@xivdyetools/types` instead
+- **API Types** (ModerationResult, ModerationLogEntry, etc.): Import from `@xivdyetools/types` instead
+
+**Note:** Project-specific types (Env, PresetRow, CategoryRow, VoteRow) remain unchanged.
+
+**Migration Guide:**
+```typescript
+// Before (deprecated)
+import { PresetStatus, CommunityPreset, AuthContext } from './types';
+
+// After (recommended)
+import type { PresetStatus, CommunityPreset, AuthContext } from '@xivdyetools/types';
+```
+
+---
+
 ## [1.1.0] - 2025-12-07
 
 ### Added
