@@ -5,7 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.1] - 2025-12-14
+## [1.2.0] - 2025-12-14
+
+### Added
+
+- **Structured Logging**: Added structured request logger middleware using `@xivdyetools/logger/worker`
+- **Shared Package Integration**: Migrated to `@xivdyetools/types` and `@xivdyetools/logger` for ecosystem consistency
+- **Test Utils Integration**: Migrated tests to use `@xivdyetools/test-utils` shared package
+
+### Fixed
+
+- **Security**: Tightened HMAC signature timestamp window
+- **Security**: Added Content-Type validation and fixed profanity filter ReDoS vulnerability
+- **Security**: Added cross-cutting security improvements
+- **Security**: Required BOT_SIGNING_SECRET for bot authentication (PRESETS-SEC-001)
+- **High Severity**: Addressed HIGH severity preset audit findings
+- **Medium Severity**: Addressed MEDIUM severity audit findings
+- **Auth**: Improved moderator ID parsing for flexible formats
+- **Error Logging**: Improved error logging and added batch documentation
+- **Tests**: Resolved 172 pre-existing type errors in test files
 
 ### Deprecated
 
