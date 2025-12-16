@@ -37,7 +37,7 @@ CORS_ORIGIN = "http://localhost:5173"
 # Production environment
 [env.production]
 name = "xivdyetools-presets-api"
-vars = { ENVIRONMENT = "production", API_VERSION = "v1", CORS_ORIGIN = "https://xiv-colorexplorer.pages.dev", ADDITIONAL_CORS_ORIGINS = "https://xivdyetools.projectgalatine.com" }
+vars = { ENVIRONMENT = "production", API_VERSION = "v1", CORS_ORIGIN = "https://xivdyetools.projectgalatine.com", ADDITIONAL_CORS_ORIGINS = "https://xiv-colorexplorer.pages.dev" }
 
 [[env.production.d1_databases]]
 binding = "DB"
