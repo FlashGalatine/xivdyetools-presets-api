@@ -1,6 +1,6 @@
 # XIV Dye Tools - Community Presets API
 
-**v1.1.0** | Cloudflare Worker API for the XIV Dye Tools Community Presets system.
+**v1.3.0** | Cloudflare Worker API for the XIV Dye Tools Community Presets system.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3%2B-blue)](https://www.typescriptlang.org/)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020)](https://workers.cloudflare.com/)
