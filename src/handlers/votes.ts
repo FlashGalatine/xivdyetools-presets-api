@@ -6,6 +6,7 @@
 import { Hono } from 'hono';
 import type { Env, AuthContext, VoteResponse } from '../types.js';
 import { requireAuth, requireUserContext } from '../middleware/auth.js';
+import { requireNotBannedCheck } from '../middleware/ban-check.js';
 
 type Variables = {
   auth: AuthContext;
@@ -147,6 +148,10 @@ votesRouter.post('/:presetId', async (c) => {
   // Require user context
   const userError = requireUserContext(c);
   if (userError) return userError;
+
+  // Check if user is banned
+  const banError = await requireNotBannedCheck(c);
+  if (banError) return banError;
 
   const auth = c.get('auth');
   const presetId = c.req.param('presetId');

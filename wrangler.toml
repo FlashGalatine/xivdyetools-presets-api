@@ -50,7 +50,8 @@ service = "xivdyetools-discord-worker"
 
 # Secrets (set via `wrangler secret put <NAME>`)
 # Required:
-#   BOT_API_SECRET - Shared secret for bot authentication
+#   BOT_API_SECRET - Shared secret for bot authentication (must match Discord worker)
+#   BOT_SIGNING_SECRET - HMAC signing key for request verification (must match Discord worker)
 #
 # Web OAuth (shared with xivdyetools-oauth-worker):
 #   JWT_SECRET - Shared JWT signing key (generate with: openssl rand -hex 32)

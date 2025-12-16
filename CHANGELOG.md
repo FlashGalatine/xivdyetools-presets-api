@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2025-12-15
+
+### Added
+
+#### User Ban Enforcement
+- **Ban Check Middleware**: `requireNotBannedCheck()` blocks banned users from:
+  - Submitting new presets (`POST /api/v1/presets`)
+  - Editing presets (`PATCH /api/v1/presets/:id`)
+  - Voting on presets (`POST /api/v1/votes/:presetId`)
+- Returns 403 with `USER_BANNED` error code for banned users
+
+#### Hidden Preset Status
+- Added `hidden` status for presets by banned users
+- Hidden presets filtered from all public listings and searches
+- Presets restored to `approved` when user is unbanned
+
+### Changed
+
+- Updated preset service to exclude `status = 'hidden'` from queries
+- Added safeguard against querying hidden status directly
+
+#### New Files
+- `src/middleware/ban-check.ts` - Ban enforcement middleware
+
+---
+
 ## [1.2.0] - 2025-12-14
 
 ### Added

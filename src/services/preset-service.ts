@@ -56,6 +56,10 @@ export function rowToPreset(row: PresetRow): CommunityPreset {
 
 /**
  * Get presets with filtering and pagination
+ *
+ * SECURITY NOTE: Hidden presets are always excluded from public listings,
+ * regardless of the status filter. This prevents bypassing the ban system
+ * by passing ?status=hidden to the API.
  */
 export async function getPresets(
   db: D1Database,
@@ -71,9 +75,13 @@ export async function getPresets(
     is_curated,
   } = filters;
 
+  // Prevent querying hidden presets - they're only visible to owners via /mine
+  const safeStatus = status === 'hidden' ? 'approved' : status;
+
   // Build WHERE clause
-  const conditions: string[] = ['status = ?'];
-  const params: (string | number)[] = [status];
+  // Always exclude 'hidden' status to prevent ban bypass
+  const conditions: string[] = ["status = ? AND status != 'hidden'"];
+  const params: (string | number)[] = [safeStatus];
 
   if (category) {
     conditions.push('category_id = ?');
@@ -142,11 +150,14 @@ export async function getPresets(
 
 /**
  * Get featured presets (top 10 by votes)
+ *
+ * SECURITY NOTE: Explicitly excludes hidden presets for defense-in-depth,
+ * even though we already filter for 'approved' status.
  */
 export async function getFeaturedPresets(db: D1Database): Promise<CommunityPreset[]> {
   const query = `
     SELECT * FROM presets
-    WHERE status = 'approved'
+    WHERE status = 'approved' AND status != 'hidden'
     ORDER BY vote_count DESC, created_at DESC
     LIMIT 10
   `;
