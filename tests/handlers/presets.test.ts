@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { Hono } from 'hono';
-import { presetsRouter } from '../../src/handlers/presets';
+import { presetsRouter, resetCategoryCache } from '../../src/handlers/presets';
 import { authMiddleware } from '../../src/middleware/auth';
 import type { Env, AuthContext, CommunityPreset } from '../../src/types';
 import {
@@ -26,6 +26,7 @@ describe('PresetsHandler', () => {
 
     beforeEach(() => {
         resetCounters();
+        resetCategoryCache(); // Reset category cache to prevent cross-test pollution
         mockDb = createMockD1Database();
         env = createMockEnv({ DB: mockDb as unknown as D1Database });
 
@@ -458,7 +459,13 @@ describe('PresetsHandler', () => {
         });
 
         it('should validate dyes count (min 2)', async () => {
-            mockDb._setupMock(() => ({ count: 0 }));
+            // Return valid categories so category validation passes, allowing dye validation to run
+            mockDb._setupMock((query) => {
+                if (query.includes('categories')) {
+                    return [{ id: 'aesthetics' }, { id: 'jobs' }, { id: 'community' }];
+                }
+                return { count: 0 };
+            });
 
             const res = await app.request(
                 '/api/v1/presets',
@@ -483,7 +490,13 @@ describe('PresetsHandler', () => {
         });
 
         it('should validate dyes count (max 5)', async () => {
-            mockDb._setupMock(() => ({ count: 0 }));
+            // Return valid categories so category validation passes, allowing dye validation to run
+            mockDb._setupMock((query) => {
+                if (query.includes('categories')) {
+                    return [{ id: 'aesthetics' }, { id: 'jobs' }, { id: 'community' }];
+                }
+                return { count: 0 };
+            });
 
             const res = await app.request(
                 '/api/v1/presets',
@@ -554,7 +567,13 @@ describe('PresetsHandler', () => {
         });
 
         it('should validate maximum tags (10)', async () => {
-            mockDb._setupMock(() => ({ count: 0 }));
+            // Return valid categories so category validation passes, allowing tag validation to run
+            mockDb._setupMock((query) => {
+                if (query.includes('categories')) {
+                    return [{ id: 'aesthetics' }, { id: 'jobs' }, { id: 'community' }];
+                }
+                return { count: 0 };
+            });
 
             const res = await app.request(
                 '/api/v1/presets',
@@ -608,6 +627,10 @@ describe('PresetsHandler', () => {
             });
 
             mockDb._setupMock((query) => {
+                // Return valid categories for category validation
+                if (query.includes('categories')) {
+                    return [{ id: 'aesthetics' }, { id: 'jobs' }, { id: 'community' }];
+                }
                 if (query.includes('COUNT') && query.includes('author_discord_id')) {
                     return { count: 0 }; // Under rate limit
                 }
@@ -1143,7 +1166,13 @@ describe('PresetsHandler', () => {
 
     describe('validateSubmission edge cases', () => {
         it('should validate dye IDs are positive numbers', async () => {
-            mockDb._setupMock(() => ({ count: 0 }));
+            // Return valid categories so category validation passes, allowing dye validation to run
+            mockDb._setupMock((query) => {
+                if (query.includes('categories')) {
+                    return [{ id: 'aesthetics' }, { id: 'jobs' }, { id: 'community' }];
+                }
+                return { count: 0 };
+            });
 
             const res = await app.request(
                 '/api/v1/presets',
@@ -1191,7 +1220,13 @@ describe('PresetsHandler', () => {
         });
 
         it('should validate tag types in submission', async () => {
-            mockDb._setupMock(() => ({ count: 0 }));
+            // Return valid categories so category validation passes, allowing tag validation to run
+            mockDb._setupMock((query) => {
+                if (query.includes('categories')) {
+                    return [{ id: 'aesthetics' }, { id: 'jobs' }, { id: 'community' }];
+                }
+                return { count: 0 };
+            });
 
             const res = await app.request(
                 '/api/v1/presets',
@@ -1264,7 +1299,13 @@ describe('PresetsHandler', () => {
         });
 
         it('should validate negative dye IDs', async () => {
-            mockDb._setupMock(() => ({ count: 0 }));
+            // Return valid categories so category validation passes, allowing dye validation to run
+            mockDb._setupMock((query) => {
+                if (query.includes('categories')) {
+                    return [{ id: 'aesthetics' }, { id: 'jobs' }, { id: 'community' }];
+                }
+                return { count: 0 };
+            });
 
             const res = await app.request(
                 '/api/v1/presets',
@@ -1310,7 +1351,8 @@ describe('PresetsHandler', () => {
 
             expect(res.status).toBe(400);
             const body = await res.json() as { message: string };
-            expect(body.message).toContain('Invalid category');
+            // Missing category returns "Category is required", not "Invalid category"
+            expect(body.message).toContain('Category is required');
         });
     });
 

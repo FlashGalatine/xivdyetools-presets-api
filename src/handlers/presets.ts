@@ -505,6 +505,14 @@ let categoryCacheTime = 0;
 const CATEGORY_CACHE_TTL = 60000; // 1 minute
 
 /**
+ * Reset the category cache (exported for testing)
+ */
+export function resetCategoryCache(): void {
+  cachedCategories = null;
+  categoryCacheTime = 0;
+}
+
+/**
  * Get valid category IDs from database with caching
  * This replaces the hardcoded VALID_CATEGORIES array
  */
