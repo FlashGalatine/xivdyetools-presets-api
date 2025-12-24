@@ -174,6 +174,8 @@ async function checkWithPerspective(
   }
 
   try {
+    // PRESETS-HIGH-001: Added 5 second timeout to prevent submission hangs
+    // If Perspective API is slow or unavailable, we'll skip it and allow the submission
     const response = await fetch(
       `https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze?key=${env.PERSPECTIVE_API_KEY}`,
       {
@@ -189,6 +191,7 @@ async function checkWithPerspective(
             PROFANITY: {},
           },
         }),
+        signal: AbortSignal.timeout(5000), // 5 second timeout
       }
     );
 
