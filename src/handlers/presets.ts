@@ -468,7 +468,7 @@ presetsRouter.post('/', async (c) => {
       type: 'submission',
       preset: {
         ...preset,
-        author_name: auth.userName || 'Unknown User',
+        author_name: auth.userName?.trim() || 'Unknown User', // PRESETS-HIGH-002
         author_discord_id: auth.userDiscordId!,
         status,
         moderation_status: moderationResult.passed ? 'clean' : 'flagged',
