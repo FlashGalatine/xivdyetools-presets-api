@@ -14,9 +14,14 @@ type Variables = {
 // HMAC REQUEST SIGNING (Bot Auth Security)
 // ============================================
 
-// Maximum age of request signature (2 minutes)
-// Tighter window reduces replay attack window while allowing for clock skew
-const SIGNATURE_MAX_AGE_SECONDS = 120;
+// Maximum age of request signature (5 minutes)
+// This provides reasonable protection against replay attacks while allowing for
+// network latency and minor clock skew between services
+const SIGNATURE_MAX_AGE_SECONDS = 300; // 5 minutes
+
+// Clock skew tolerance for future timestamps (1 minute)
+// Allows requests with timestamps slightly in the future due to clock differences
+const CLOCK_SKEW_TOLERANCE_SECONDS = 60;
 
 /**
  * Verify HMAC signature for bot requests
@@ -40,11 +45,31 @@ async function verifyBotRequestSignature(
 ): Promise<boolean> {
   if (!signature || !timestamp) return false;
 
-  // Reject requests outside the time window to prevent replay attacks
-  // Using a tighter 2-minute window (was 5 minutes) to reduce replay risk
+  // Validate timestamp to prevent replay attacks
+  // Reject requests with timestamps older than 5 minutes OR too far in the future
   const requestTime = parseInt(timestamp, 10);
   const now = Math.floor(Date.now() / 1000);
-  if (isNaN(requestTime) || Math.abs(now - requestTime) > SIGNATURE_MAX_AGE_SECONDS) {
+  const age = now - requestTime;
+
+  if (isNaN(requestTime)) {
+    return false;
+  }
+
+  // Reject if timestamp is too old (> 5 minutes)
+  if (age > SIGNATURE_MAX_AGE_SECONDS) {
+    console.warn('HMAC signature rejected: timestamp too old', {
+      age,
+      maxAge: SIGNATURE_MAX_AGE_SECONDS,
+    });
+    return false;
+  }
+
+  // Reject if timestamp is too far in the future (> 1 minute clock skew)
+  if (age < -CLOCK_SKEW_TOLERANCE_SECONDS) {
+    console.warn('HMAC signature rejected: timestamp too far in future', {
+      age: Math.abs(age),
+      tolerance: CLOCK_SKEW_TOLERANCE_SECONDS,
+    });
     return false;
   }
 
