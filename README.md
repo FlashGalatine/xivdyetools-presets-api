@@ -1,6 +1,6 @@
 # XIV Dye Tools - Community Presets API
 
-**v1.3.0** | Cloudflare Worker API for the XIV Dye Tools Community Presets system.
+**v1.4.6** | Cloudflare Worker API for the XIV Dye Tools Community Presets system.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3%2B-blue)](https://www.typescriptlang.org/)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020)](https://workers.cloudflare.com/)
@@ -13,6 +13,9 @@ This Worker provides:
 - Multi-language content moderation (local + Perspective API)
 - Moderator actions with audit logging
 - Preset editing with revert capability
+- Standardized API responses with consistent error format
+- UTF-8 safe text truncation for Discord embeds
+- X-Request-ID validation and correlation
 
 ## Setup
 
